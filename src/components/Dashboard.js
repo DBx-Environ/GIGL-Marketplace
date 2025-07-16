@@ -92,6 +92,9 @@ function Dashboard() {
     setShowBidDetailsModal(true);
   };
 
+  // Get latest bids to display (only most recent bid per opportunity)
+  const latestUserBids = getLatestBidsPerOpportunity(userBids);
+
   const handleEditBid = (bid) => {
     const opportunity = bidOpportunities.find(opp => opp.id === bid.opportunityId);
     if (opportunity) {
@@ -173,7 +176,7 @@ function Dashboard() {
             <h2 className="dashboard-section-title">Current Bids</h2>
           </div>
           <div className="dashboard-section-content">
-            {userBids.length === 0 ? (
+            {latestUserBids.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-state-icon">📝</div>
                 <div className="empty-state-title">No bids placed yet</div>
@@ -183,7 +186,7 @@ function Dashboard() {
               </div>
             ) : (
               <div>
-                {userBids.map((bid) => {
+                {latestUserBids.map((bid) => {
                   const opportunity = bidOpportunities.find(opp => opp.id === bid.opportunityId);
                   const status = getBidStatus(bid);
                   

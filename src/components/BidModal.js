@@ -194,7 +194,6 @@ function BidModal({ opportunity, existingBid, onClose }) {
           <form onSubmit={handleSubmit(onSubmit)}>
             <div className="form-group">
               <label className="form-label">
-                <DollarSign size={16} className="inline mr-1" />
                 Bid Amount (£)
               </label>
               <input
