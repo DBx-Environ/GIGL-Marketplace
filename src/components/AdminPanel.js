@@ -1,4 +1,4 @@
-// src/components/AdminPanel.js
+// src/components/AdminPanel.js 16 july
 import React, { useState, useEffect } from 'react';
 import { collection, query, onSnapshot, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
