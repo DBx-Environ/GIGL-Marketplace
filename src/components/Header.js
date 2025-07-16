@@ -3,7 +3,7 @@ import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-toastify';
-import { LogOut, User } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 
 function Header() {
   const { currentUser, userData, logout } = useAuth();

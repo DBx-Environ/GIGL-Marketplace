@@ -237,13 +237,19 @@ function Register() {
         <div className="text-center mt-8">
           <p className="text-sm text-secondary">
             By creating an account, you agree to our{' '}
-            <a href="#" className="text-primary hover:text-primary-hover">
+            <button
+              onClick={() => alert('Terms of Service coming soon')}
+              className="text-primary hover:text-primary-hover bg-transparent border-none cursor-pointer underline"
+            >
               Terms of Service
-            </a>
+            </button>
             {' '}and{' '}
-            <a href="#" className="text-primary hover:text-primary-hover">
+            <button
+              onClick={() => alert('Privacy Policy coming soon')}
+              className="text-primary hover:text-primary-hover bg-transparent border-none cursor-pointer underline"
+            >
               Privacy Policy
-            </a>
+            </button>
           </p>
         </div>
       </div>

@@ -27,24 +27,24 @@ function Footer() {
           <div>
             <h3 className="text-lg font-semibold mb-4">Quick Links</h3>
             <div className="space-y-2">
-              <a
-                href="#"
-                className="block text-gray-400 hover:text-white text-sm transition-colors"
+              <button
+                onClick={() => alert('Terms & Conditions coming soon')}
+                className="block text-gray-400 hover:text-white text-sm transition-colors bg-transparent border-none cursor-pointer text-left"
               >
                 Terms & Conditions
-              </a>
-              <a
-                href="#"
-                className="block text-gray-400 hover:text-white text-sm transition-colors"
+              </button>
+              <button
+                onClick={() => alert('Privacy Policy coming soon')}
+                className="block text-gray-400 hover:text-white text-sm transition-colors bg-transparent border-none cursor-pointer text-left"
               >
                 Privacy Policy
-              </a>
-              <a
-                href="#"
-                className="block text-gray-400 hover:text-white text-sm transition-colors"
+              </button>
+              <button
+                onClick={() => alert('About GIGL coming soon')}
+                className="block text-gray-400 hover:text-white text-sm transition-colors bg-transparent border-none cursor-pointer text-left"
               >
                 About GIGL
-              </a>
+              </button>
               <a
                 href="mailto:support@gigl.co.uk"
                 className="flex items-center space-x-1 text-gray-400 hover:text-white text-sm transition-colors"
