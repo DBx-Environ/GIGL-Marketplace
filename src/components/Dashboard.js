@@ -43,6 +43,39 @@ function Dashboard() {
   const [showBidModal, setShowBidModal] = useState(false);
   const [showBidDetailsModal, setShowBidDetailsModal] = useState(false);
 
+  const getLatestBidsPerOpportunity = (bids) => {
+    // Group bids by opportunity, then get the latest one for each
+    const bidsByOpportunity = {};
+    
+    bids.forEach(bid => {
+      if (!bidsByOpportunity[bid.opportunityId]) {
+        bidsByOpportunity[bid.opportunityId] = [];
+      }
+      bidsByOpportunity[bid.opportunityId].push(bid);
+    });
+
+    // Get the latest bid for each opportunity
+    const latestBids = [];
+    Object.keys(bidsByOpportunity).forEach(opportunityId => {
+      const opportunityBids = bidsByOpportunity[opportunityId];
+      // Sort by updatedAt (or createdAt if no updatedAt) descending
+      const sortedBids = opportunityBids.sort((a, b) => {
+        const aTime = a.updatedAt || a.createdAt;
+        const bTime = b.updatedAt || b.createdAt;
+        
+        // Handle Firestore timestamps
+        const aDate = aTime?.toDate ? aTime.toDate() : new Date(aTime);
+        const bDate = bTime?.toDate ? bTime.toDate() : new Date(bTime);
+        
+        return bDate - aDate;
+      });
+      
+      latestBids.push(sortedBids[0]); // Get the most recent bid
+    });
+
+    return latestBids;
+  };
+
   useEffect(() => {
     if (!currentUser) return;
 
@@ -92,9 +125,6 @@ function Dashboard() {
     setShowBidDetailsModal(true);
   };
 
-  // Get latest bids to display (only most recent bid per opportunity)
-  const latestUserBids = getLatestBidsPerOpportunity(userBids);
-
   const handleEditBid = (bid) => {
     const opportunity = bidOpportunities.find(opp => opp.id === bid.opportunityId);
     if (opportunity) {
@@ -103,6 +133,9 @@ function Dashboard() {
       setShowBidModal(true);
     }
   };
+
+  // Get latest bids to display (only most recent bid per opportunity)
+  const latestUserBids = getLatestBidsPerOpportunity(userBids);
 
   const getBidStatus = (bid) => {
     const opportunity = bidOpportunities.find(opp => opp.id === bid.opportunityId);
