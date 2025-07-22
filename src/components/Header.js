@@ -1,4 +1,4 @@
-// src/components/Header.js
+// Debug Header.js - Add console logs to identify the issue
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';

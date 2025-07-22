@@ -1,13 +1,13 @@
-// src/components/Login.js
+// src/components/Login.js - CLEAN VERSION
+
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { toast } from 'react-toastify';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../firebase/config';
-import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 
 const schema = yup.object().shape({
   email: yup.string().email('Invalid email').required('Email is required'),
@@ -17,172 +17,327 @@ const schema = yup.object().shape({
 function Login() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const { login, resetPassword } = useAuth();
-  const navigate = useNavigate();
+  const [needsRefresh, setNeedsRefresh] = useState(false);
+  const { login } = useAuth();
   
   const { register, handleSubmit, formState: { errors } } = useForm({
     resolver: yupResolver(schema)
   });
 
-  const onSubmit = async (data) => {
+  // Automatic refresh function (only shows when needed)
+  const handleQuickRefresh = async () => {
     try {
-      setLoading(true);
-      await login(data.email, data.password);
-      
-      // Force sync verification status after successful login
       const user = auth.currentUser;
-      if (user && user.emailVerified) {
-        try {
-          const { doc, getDoc, updateDoc } = await import('firebase/firestore');
-          const { db } = await import('../firebase/config');
-          
-          const userDocRef = doc(db, 'users', user.uid);
-          const userDocSnap = await getDoc(userDocRef);
-          
-          if (userDocSnap.exists()) {
-            const currentData = userDocSnap.data();
-            
-            if (!currentData.emailVerified) {
-              await updateDoc(userDocRef, {
-                emailVerified: true,
-                lastLoginAt: new Date().toISOString()
-              });
-              console.log('Email verification status synced to Firestore');
-            }
-          }
-        } catch (syncError) {
-          console.error('Error syncing verification status:', syncError);
+      if (user) {
+        await user.reload();
+        if (user.emailVerified) {
+          toast.success('✅ Email verification detected! Try logging in again.');
+          setNeedsRefresh(false);
+        } else {
+          toast.warning('⚠️ Email still not verified. Please check your email and click the verification link.');
         }
       }
-      
-      toast.success('Login successful!');
-      navigate('/dashboard');
     } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setLoading(false);
+      toast.error('Failed to refresh. Please try again.');
     }
   };
 
-  const handlePasswordReset = async () => {
-    const email = prompt('Enter your email address:');
-    if (email) {
-      try {
-        await resetPassword(email);
-        toast.success('Password reset email sent! Check your inbox.');
-      } catch (error) {
-        toast.error(error.message);
+  const onSubmit = async (data) => {
+    try {
+      setLoading(true);
+      setNeedsRefresh(false);
+      
+      await login(data.email, data.password);
+      
+      toast.success('Login successful! Redirecting...');
+      
+      // Clean navigation to dashboard
+      setTimeout(() => {
+        window.location.href = '/dashboard';
+      }, 1000);
+      
+    } catch (error) {
+      console.error('❌ Login error:', error);
+      setLoading(false);
+      
+      if (error.message.includes('verify your email')) {
+        toast.error('Please verify your email address before logging in.');
+        setNeedsRefresh(true); // Show refresh option only when needed
+        setTimeout(() => {
+          toast.info('💡 Just verified your email? Click "Check Verification" below!');
+        }, 2000);
+      } else {
+        toast.error(error.message || 'Login failed. Please check your credentials.');
       }
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
-      <div className="w-full max-w-md">
-        {/* Logo Header */}
-        <div className="text-center mb-8">
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0' }}>
-            <img 
-              src="/GIGL_Logo.png" 
-              alt="GIGL Logo" 
-              style={{ 
-                height: '360px', 
-                objectFit: 'contain',
-                display: 'block',
-                margin: '0',
-                padding: '0'
-              }}
-            />
-            <h2 className="text-3xl font-bold text-primary" style={{ margin: '0', padding: '0' }}>
-              Welcome Back
-            </h2>
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#f9f9f9',
+      padding: '20px'
+    }}>
+      <div style={{
+        maxWidth: '400px',
+        width: '100%',
+        backgroundColor: 'white',
+        borderRadius: '12px',
+        boxShadow: '0 8px 25px rgba(0, 0, 0, 0.1)',
+        padding: '40px'
+      }}>
+        
+        {/* Header */}
+        <div style={{ textAlign: 'center', marginBottom: '35px' }}>
+          <div style={{
+            width: '60px',
+            height: '60px',
+            backgroundColor: '#4CAF50',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 20px',
+            fontSize: '24px'
+          }}>
+            🏠
           </div>
-          <p className="text-secondary mt-2">
+          
+          <h1 style={{
+            fontSize: '28px',
+            fontWeight: 'bold',
+            color: '#333',
+            margin: '0 0 8px'
+          }}>
+            Welcome Back
+          </h1>
+          <p style={{
+            color: '#666',
+            fontSize: '16px',
+            margin: 0
+          }}>
             Sign in to your GIGL Marketplace account
           </p>
         </div>
-        
+
         {/* Login Form */}
-        <div className="card">
-          <div className="card-content">
-            <form onSubmit={handleSubmit(onSubmit)}>
-              <div className="form-group">
-                <label className="form-label">
-                  <Mail size={16} className="inline mr-1" />
-                  Email address
-                </label>
-                <input
-                  {...register('email')}
-                  type="email"
-                  autoComplete="email"
-                  className={`form-input ${errors.email ? 'error' : ''}`}
-                  placeholder="Enter your email"
-                />
-                {errors.email && (
-                  <div className="form-error">{errors.email.message}</div>
-                )}
-              </div>
-              
-              <div className="form-group">
-                <label className="form-label">
-                  <Lock size={16} className="inline mr-1" />
-                  Password
-                </label>
-                <div className="relative">
-                  <input
-                    {...register('password')}
-                    type={showPassword ? 'text' : 'password'}
-                    autoComplete="current-password"
-                    className={`form-input ${errors.password ? 'error' : ''}`}
-                    placeholder="Enter your password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-secondary hover:text-primary"
-                  >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-                {errors.password && (
-                  <div className="form-error">{errors.password.message}</div>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between mb-6">
-                <Link to="/register" className="text-sm text-primary hover:text-primary-hover font-medium">
-                  Don't have an account? Sign up
-                </Link>
-                <button
-                  type="button"
-                  onClick={handlePasswordReset}
-                  className="text-sm text-secondary hover:text-primary font-medium"
-                >
-                  Forgot password?
-                </button>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn btn-primary w-full"
-              >
-                {loading ? 'Signing in...' : 'Sign in'}
-              </button>
-            </form>
+        <form onSubmit={handleSubmit(onSubmit)} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          
+          {/* Email Field */}
+          <div>
+            <label style={{
+              display: 'block',
+              fontSize: '14px',
+              fontWeight: '600',
+              color: '#333',
+              marginBottom: '8px'
+            }}>
+              Email Address
+            </label>
+            <input
+              {...register('email')}
+              type="email"
+              style={{
+                width: '100%',
+                padding: '14px 16px',
+                border: errors.email ? '2px solid #ef4444' : '2px solid #e1e5e9',
+                borderRadius: '8px',
+                fontSize: '16px',
+                boxSizing: 'border-box',
+                transition: 'border-color 0.3s ease',
+                outline: 'none'
+              }}
+              placeholder="Enter your email"
+              onFocus={(e) => {
+                if (!errors.email) e.target.style.borderColor = '#4CAF50';
+              }}
+              onBlur={(e) => {
+                if (!errors.email) e.target.style.borderColor = '#e1e5e9';
+              }}
+            />
+            {errors.email && (
+              <p style={{ color: '#ef4444', fontSize: '12px', marginTop: '6px', marginLeft: '4px' }}>
+                {errors.email.message}
+              </p>
+            )}
           </div>
+
+          {/* Password Field */}
+          <div>
+            <label style={{
+              display: 'block',
+              fontSize: '14px',
+              fontWeight: '600',
+              color: '#333',
+              marginBottom: '8px'
+            }}>
+              Password
+            </label>
+            <div style={{ position: 'relative' }}>
+              <input
+                {...register('password')}
+                type={showPassword ? 'text' : 'password'}
+                style={{
+                  width: '100%',
+                  padding: '14px 16px',
+                  paddingRight: '50px',
+                  border: errors.password ? '2px solid #ef4444' : '2px solid #e1e5e9',
+                  borderRadius: '8px',
+                  fontSize: '16px',
+                  boxSizing: 'border-box',
+                  transition: 'border-color 0.3s ease',
+                  outline: 'none'
+                }}
+                placeholder="Enter your password"
+                onFocus={(e) => {
+                  if (!errors.password) e.target.style.borderColor = '#4CAF50';
+                }}
+                onBlur={(e) => {
+                  if (!errors.password) e.target.style.borderColor = '#e1e5e9';
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '14px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#666',
+                  fontSize: '16px',
+                  padding: '4px'
+                }}
+              >
+                {showPassword ? '🙈' : '👁️'}
+              </button>
+            </div>
+            {errors.password && (
+              <p style={{ color: '#ef4444', fontSize: '12px', marginTop: '6px', marginLeft: '4px' }}>
+                {errors.password.message}
+              </p>
+            )}
+          </div>
+
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              width: '100%',
+              padding: '14px 24px',
+              backgroundColor: loading ? '#a5d6a7' : '#4CAF50',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '16px',
+              fontWeight: '600',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              marginTop: '8px',
+              transition: 'background-color 0.3s ease',
+              boxShadow: loading ? 'none' : '0 2px 4px rgba(76, 175, 80, 0.3)'
+            }}
+            onMouseEnter={(e) => {
+              if (!loading) e.target.style.backgroundColor = '#45a049';
+            }}
+            onMouseLeave={(e) => {
+              if (!loading) e.target.style.backgroundColor = '#4CAF50';
+            }}
+          >
+            {loading ? 'Signing In...' : 'Sign In'}
+          </button>
+        </form>
+
+        {/* Check Verification Button (only shows when needed) */}
+        {needsRefresh && (
+          <div style={{
+            backgroundColor: '#fff3cd',
+            border: '1px solid #ffeaa7',
+            borderRadius: '8px',
+            padding: '16px',
+            marginTop: '20px',
+            textAlign: 'center'
+          }}>
+            <p style={{
+              fontSize: '14px',
+              color: '#856404',
+              margin: '0 0 12px',
+              fontWeight: '500'
+            }}>
+              📧 Just verified your email?
+            </p>
+            <button
+              type="button"
+              onClick={handleQuickRefresh}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#ff9800',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                transition: 'background-color 0.3s ease'
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#f57f17'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#ff9800'}
+            >
+              ✅ Check Verification
+            </button>
+          </div>
+        )}
+
+        {/* Register Link */}
+        <div style={{ textAlign: 'center', marginTop: '30px' }}>
+          <span style={{ color: '#666', fontSize: '14px' }}>
+            Don't have an account?{' '}
+            <Link 
+              to="/register" 
+              style={{ 
+                color: '#4CAF50', 
+                textDecoration: 'none',
+                fontWeight: '600',
+                transition: 'color 0.3s ease'
+              }}
+              onMouseEnter={(e) => e.target.style.color = '#45a049'}
+              onMouseLeave={(e) => e.target.style.color = '#4CAF50'}
+            >
+              Create account
+            </Link>
+          </span>
         </div>
 
-        {/* Footer */}
-        <div className="text-center mt-8">
-          <p className="text-sm text-secondary">
-            Need help? Contact us at{' '}
-            <a
-              href="mailto:support@gigl.co.uk"
-              className="text-primary hover:text-primary-hover"
-            >
-              support@gigl.co.uk
-            </a>
+        {/* Help Section */}
+        <div style={{
+          backgroundColor: '#f8f9fa',
+          border: '1px solid #e9ecef',
+          borderRadius: '8px',
+          padding: '16px',
+          marginTop: '24px'
+        }}>
+          <p style={{
+            fontSize: '13px',
+            color: '#666',
+            margin: '0 0 8px',
+            fontWeight: '500'
+          }}>
+            💡 New to GIGL Marketplace?
+          </p>
+          <p style={{
+            fontSize: '12px',
+            color: '#777',
+            margin: 0,
+            lineHeight: '1.4'
+          }}>
+            After registering, you'll need to verify your email address before you can sign in. 
+            Check your inbox for a verification link.
           </p>
         </div>
       </div>

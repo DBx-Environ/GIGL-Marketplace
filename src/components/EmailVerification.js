@@ -1,10 +1,10 @@
-// src/components/EmailVerification.js
+// src/components/EmailVerification.js - CLEANED UP VERSION
+
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { sendEmailVerification } from 'firebase/auth';
 import { auth } from '../firebase/config';
 import { toast } from 'react-toastify';
-import { Mail, CheckCircle } from 'lucide-react';
 
 function EmailVerification() {
   const [loading, setLoading] = useState(false);
@@ -27,61 +27,159 @@ function EmailVerification() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div className="text-center">
-          <div className="flex justify-center mb-6">
-            <div className="bg-blue-100 p-4 rounded-full">
-              <Mail size={48} className="text-blue-600" />
-            </div>
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#f9f9f9',
+      padding: '20px'
+    }}>
+      <div style={{
+        maxWidth: '500px',
+        width: '100%',
+        backgroundColor: 'white',
+        borderRadius: '8px',
+        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+        padding: '40px'
+      }}>
+        
+        {/* Header */}
+        <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+          <div style={{
+            width: '80px',
+            height: '80px',
+            backgroundColor: '#4CAF50',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 20px'
+          }}>
+            <span style={{ color: 'white', fontSize: '36px' }}>📧</span>
           </div>
-          <h2 className="text-3xl font-extrabold text-gray-900 mb-2">
-            Verify Your Email
-          </h2>
-          <p className="text-gray-600">
-            We've sent a verification email to your address. Please check your inbox and click the verification link to complete your registration.
+          
+          <h1 style={{
+            fontSize: '28px',
+            fontWeight: 'bold',
+            color: '#333',
+            margin: '0 0 10px'
+          }}>
+            Check Your Email
+          </h1>
+          
+          <p style={{
+            color: '#666',
+            fontSize: '16px',
+            lineHeight: '1.5',
+            margin: 0
+          }}>
+            We've sent a verification link to your email address. 
+            Please click the link to verify your account.
           </p>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <div className="flex items-start space-x-3">
-            <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
-            <div>
-              <h3 className="text-sm font-medium text-gray-900">Next Steps:</h3>
-              <ol className="mt-2 text-sm text-gray-600 space-y-1">
-                <li>1. Check your email inbox (and spam folder)</li>
-                <li>2. Click the verification link in the email</li>
-                <li>3. Return to this page and try signing in</li>
-              </ol>
-            </div>
-          </div>
+        {/* Instructions */}
+        <div style={{
+          backgroundColor: '#f8f9fa',
+          border: '1px solid #e9ecef',
+          borderRadius: '6px',
+          padding: '20px',
+          marginBottom: '30px'
+        }}>
+          <h3 style={{
+            fontSize: '16px',
+            fontWeight: '600',
+            color: '#333',
+            margin: '0 0 15px'
+          }}>
+            Next Steps:
+          </h3>
+          
+          <ol style={{
+            color: '#666',
+            fontSize: '14px',
+            lineHeight: '1.6',
+            margin: 0,
+            paddingLeft: '20px'
+          }}>
+            <li style={{ marginBottom: '8px' }}>
+              Check your email inbox (and spam/junk folder)
+            </li>
+            <li style={{ marginBottom: '8px' }}>
+              Click the verification link in the email
+            </li>
+            <li style={{ marginBottom: '8px' }}>
+              Return here and try signing in
+            </li>
+          </ol>
         </div>
 
-        <div className="flex flex-col space-y-4">
+        {/* Action Buttons */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <button
             onClick={handleResendVerification}
             disabled={loading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+            style={{
+              width: '100%',
+              padding: '12px 24px',
+              backgroundColor: loading ? '#ccc' : '#4CAF50',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '16px',
+              fontWeight: '500',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              transition: 'background-color 0.3s'
+            }}
           >
             {loading ? 'Sending...' : 'Resend Verification Email'}
           </button>
-          
-          <div className="text-center">
-            <Link
-              to="/login"
-              className="text-blue-600 hover:text-blue-500 text-sm font-medium"
-            >
-              Already verified? Sign in here
-            </Link>
-          </div>
+
+          <Link
+            to="/login"
+            style={{
+              display: 'block',
+              textAlign: 'center',
+              padding: '12px 24px',
+              backgroundColor: 'transparent',
+              color: '#4CAF50',
+              border: '2px solid #4CAF50',
+              borderRadius: '6px',
+              textDecoration: 'none',
+              fontSize: '16px',
+              fontWeight: '500',
+              transition: 'all 0.3s'
+            }}
+            onMouseOver={(e) => {
+              e.target.style.backgroundColor = '#4CAF50';
+              e.target.style.color = 'white';
+            }}
+            onMouseOut={(e) => {
+              e.target.style.backgroundColor = 'transparent';
+              e.target.style.color = '#4CAF50';
+            }}
+          >
+            Back to Login
+          </Link>
         </div>
 
-        <div className="text-center">
-          <p className="text-xs text-gray-500">
-            Having trouble? Contact us at{' '}
-            <a
+        {/* Help Text */}
+        <div style={{
+          textAlign: 'center',
+          marginTop: '30px',
+          paddingTop: '20px',
+          borderTop: '1px solid #eee'
+        }}>
+          <p style={{
+            color: '#999',
+            fontSize: '14px',
+            margin: 0
+          }}>
+            Having trouble? Contact support at{' '}
+            <a 
               href="mailto:david@baxterenvironmental.co.uk"
-              className="text-blue-600 hover:text-blue-500"
+              style={{ color: '#4CAF50', textDecoration: 'none' }}
             >
               david@baxterenvironmental.co.uk
             </a>

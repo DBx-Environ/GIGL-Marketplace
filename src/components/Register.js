@@ -1,4 +1,4 @@
-// src/components/Register.js
+// src/components/Register.js - FIXED VERSION
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -6,7 +6,6 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { toast } from 'react-toastify';
 import { useAuth } from '../contexts/AuthContext';
-import { User, Mail, Lock, Building, Eye, EyeOff } from 'lucide-react';
 
 const schema = yup.object().shape({
   email: yup.string().email('Invalid email').required('Email is required'),
@@ -29,7 +28,7 @@ function Register() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const { signup } = useAuth();
+  const { register: registerUser } = useAuth(); // FIXED: Changed from signup to register
   const navigate = useNavigate();
   
   const { register, handleSubmit, formState: { errors } } = useForm({
@@ -39,214 +38,358 @@ function Register() {
   const onSubmit = async (data) => {
     try {
       setLoading(true);
-      await signup(data.email, data.password, {
-        firstName: data.firstName,
-        lastName: data.lastName,
-        company: data.company
-      });
+      
+      // FIXED: Using registerUser instead of signup
+      await registerUser(data.email, data.password, data.firstName, data.lastName);
+      
       toast.success('Registration successful! Please check your email to verify your account.');
       navigate('/verify-email');
     } catch (error) {
-      toast.error(error.message);
+      console.error('Registration error:', error);
+      toast.error(error.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
-      <div className="w-full max-w-2xl">
-        {/* Logo Header */}
-        <div className="text-center mb-8">
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0' }}>
-            <img 
-              src="/GIGL_Logo.png" 
-              alt="GIGL Logo" 
-              style={{ 
-                height: '360px', 
-                objectFit: 'contain',
-                display: 'block',
-                margin: '0',
-                padding: '0'
-              }}
-            />
-            <h2 className="text-3xl font-bold text-primary" style={{ margin: '0', padding: '0' }}>
-              Create Your Account
-            </h2>
-          </div>
-          <p className="text-secondary mt-2">
-            Join the GIGL Marketplace bidding platform
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#f9f9f9',
+      padding: '20px'
+    }}>
+      <div style={{
+        maxWidth: '500px',
+        width: '100%',
+        backgroundColor: 'white',
+        borderRadius: '8px',
+        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+        padding: '40px'
+      }}>
+        
+        {/* Header */}
+        <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+          <h1 style={{
+            fontSize: '28px',
+            fontWeight: 'bold',
+            color: '#333',
+            margin: '0 0 10px'
+          }}>
+            Create Account
+          </h1>
+          <p style={{
+            color: '#666',
+            fontSize: '16px',
+            margin: 0
+          }}>
+            Join GIGL Marketplace to start bidding on biodiversity projects
           </p>
         </div>
-        
+
         {/* Registration Form */}
-        <div className="card">
-          <div className="card-content">
-            <form onSubmit={handleSubmit(onSubmit)}>
-              {/* Personal Information */}
-              <div className="form-grid form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">
-                    <User size={16} className="inline mr-1" />
-                    First Name
-                  </label>
-                  <input
-                    {...register('firstName')}
-                    type="text"
-                    className={`form-input ${errors.firstName ? 'error' : ''}`}
-                    placeholder="Enter your first name"
-                  />
-                  {errors.firstName && (
-                    <div className="form-error">{errors.firstName.message}</div>
-                  )}
-                </div>
-                
-                <div className="form-group">
-                  <label className="form-label">
-                    <User size={16} className="inline mr-1" />
-                    Last Name
-                  </label>
-                  <input
-                    {...register('lastName')}
-                    type="text"
-                    className={`form-input ${errors.lastName ? 'error' : ''}`}
-                    placeholder="Enter your last name"
-                  />
-                  {errors.lastName && (
-                    <div className="form-error">{errors.lastName.message}</div>
-                  )}
-                </div>
-              </div>
-              
-              <div className="form-group">
-                <label className="form-label">
-                  <Building size={16} className="inline mr-1" />
-                  Company
-                </label>
-                <input
-                  {...register('company')}
-                  type="text"
-                  className={`form-input ${errors.company ? 'error' : ''}`}
-                  placeholder="Enter your company name"
-                />
-                {errors.company && (
-                  <div className="form-error">{errors.company.message}</div>
-                )}
-              </div>
-              
-              <div className="form-group">
-                <label className="form-label">
-                  <Mail size={16} className="inline mr-1" />
-                  Email
-                </label>
-                <input
-                  {...register('email')}
-                  type="email"
-                  autoComplete="email"
-                  className={`form-input ${errors.email ? 'error' : ''}`}
-                  placeholder="Enter your email address"
-                />
-                {errors.email && (
-                  <div className="form-error">{errors.email.message}</div>
-                )}
-              </div>
-              
-              <div className="form-grid form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">
-                    <Lock size={16} className="inline mr-1" />
-                    Password
-                  </label>
-                  <div className="relative">
-                    <input
-                      {...register('password')}
-                      type={showPassword ? 'text' : 'password'}
-                      autoComplete="new-password"
-                      className={`form-input ${errors.password ? 'error' : ''}`}
-                      placeholder="Create a password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-secondary hover:text-primary"
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                  {errors.password && (
-                    <div className="form-error">{errors.password.message}</div>
-                  )}
-                </div>
-                
-                <div className="form-group">
-                  <label className="form-label">
-                    <Lock size={16} className="inline mr-1" />
-                    Confirm Password
-                  </label>
-                  <div className="relative">
-                    <input
-                      {...register('confirmPassword')}
-                      type={showConfirmPassword ? 'text' : 'password'}
-                      autoComplete="new-password"
-                      className={`form-input ${errors.confirmPassword ? 'error' : ''}`}
-                      placeholder="Confirm your password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-secondary hover:text-primary"
-                    >
-                      {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                  {errors.confirmPassword && (
-                    <div className="form-error">{errors.confirmPassword.message}</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Password Requirements */}
-              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded">
-                <h4 className="font-medium text-blue-900 mb-2">Password Requirements:</h4>
-                <ul className="text-sm text-blue-800 space-y-1">
-                  <li>• At least 8 characters long</li>
-                  <li>• Contains uppercase and lowercase letters</li>
-                  <li>• Contains at least one number</li>
-                  <li>• Contains at least one special character (@$!%*?&)</li>
-                </ul>
-              </div>
-
-              <div className="flex items-center justify-between mb-6">
-                <Link to="/login" className="text-sm text-primary hover:text-primary-hover font-medium">
-                  Already have an account? Sign in
-                </Link>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn btn-primary w-full"
-              >
-                {loading ? 'Creating account...' : 'Create account'}
-              </button>
-            </form>
+        <form onSubmit={handleSubmit(onSubmit)} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          
+          {/* Name Fields */}
+          <div style={{ display: 'flex', gap: '15px' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{
+                display: 'block',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#333',
+                marginBottom: '5px'
+              }}>
+                First Name
+              </label>
+              <input
+                {...register('firstName')}
+                type="text"
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  border: errors.firstName ? '2px solid #ef4444' : '1px solid #ddd',
+                  borderRadius: '6px',
+                  fontSize: '16px',
+                  boxSizing: 'border-box'
+                }}
+                placeholder="John"
+              />
+              {errors.firstName && (
+                <p style={{ color: '#ef4444', fontSize: '12px', marginTop: '5px' }}>
+                  {errors.firstName.message}
+                </p>
+              )}
+            </div>
+            
+            <div style={{ flex: 1 }}>
+              <label style={{
+                display: 'block',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#333',
+                marginBottom: '5px'
+              }}>
+                Last Name
+              </label>
+              <input
+                {...register('lastName')}
+                type="text"
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  border: errors.lastName ? '2px solid #ef4444' : '1px solid #ddd',
+                  borderRadius: '6px',
+                  fontSize: '16px',
+                  boxSizing: 'border-box'
+                }}
+                placeholder="Smith"
+              />
+              {errors.lastName && (
+                <p style={{ color: '#ef4444', fontSize: '12px', marginTop: '5px' }}>
+                  {errors.lastName.message}
+                </p>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* Footer */}
-        <div className="text-center mt-8">
-          <p className="text-sm text-secondary">
+          {/* Company Field */}
+          <div>
+            <label style={{
+              display: 'block',
+              fontSize: '14px',
+              fontWeight: '500',
+              color: '#333',
+              marginBottom: '5px'
+            }}>
+              Company Name
+            </label>
+            <input
+              {...register('company')}
+              type="text"
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: errors.company ? '2px solid #ef4444' : '1px solid #ddd',
+                borderRadius: '6px',
+                fontSize: '16px',
+                boxSizing: 'border-box'
+              }}
+              placeholder="Acme Environmental Ltd"
+            />
+            {errors.company && (
+              <p style={{ color: '#ef4444', fontSize: '12px', marginTop: '5px' }}>
+                {errors.company.message}
+              </p>
+            )}
+          </div>
+
+          {/* Email Field */}
+          <div>
+            <label style={{
+              display: 'block',
+              fontSize: '14px',
+              fontWeight: '500',
+              color: '#333',
+              marginBottom: '5px'
+            }}>
+              Email Address
+            </label>
+            <input
+              {...register('email')}
+              type="email"
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: errors.email ? '2px solid #ef4444' : '1px solid #ddd',
+                borderRadius: '6px',
+                fontSize: '16px',
+                boxSizing: 'border-box'
+              }}
+              placeholder="john@example.com"
+            />
+            {errors.email && (
+              <p style={{ color: '#ef4444', fontSize: '12px', marginTop: '5px' }}>
+                {errors.email.message}
+              </p>
+            )}
+          </div>
+
+          {/* Password Field */}
+          <div>
+            <label style={{
+              display: 'block',
+              fontSize: '14px',
+              fontWeight: '500',
+              color: '#333',
+              marginBottom: '5px'
+            }}>
+              Password
+            </label>
+            <div style={{ position: 'relative' }}>
+              <input
+                {...register('password')}
+                type={showPassword ? 'text' : 'password'}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  paddingRight: '40px',
+                  border: errors.password ? '2px solid #ef4444' : '1px solid #ddd',
+                  borderRadius: '6px',
+                  fontSize: '16px',
+                  boxSizing: 'border-box'
+                }}
+                placeholder="Create a strong password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#666',
+                  fontSize: '14px'
+                }}
+              >
+                {showPassword ? '🙈' : '👁️'}
+              </button>
+            </div>
+            {errors.password && (
+              <p style={{ color: '#ef4444', fontSize: '12px', marginTop: '5px' }}>
+                {errors.password.message}
+              </p>
+            )}
+          </div>
+
+          {/* Confirm Password Field */}
+          <div>
+            <label style={{
+              display: 'block',
+              fontSize: '14px',
+              fontWeight: '500',
+              color: '#333',
+              marginBottom: '5px'
+            }}>
+              Confirm Password
+            </label>
+            <div style={{ position: 'relative' }}>
+              <input
+                {...register('confirmPassword')}
+                type={showConfirmPassword ? 'text' : 'password'}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  paddingRight: '40px',
+                  border: errors.confirmPassword ? '2px solid #ef4444' : '1px solid #ddd',
+                  borderRadius: '6px',
+                  fontSize: '16px',
+                  boxSizing: 'border-box'
+                }}
+                placeholder="Confirm your password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#666',
+                  fontSize: '14px'
+                }}
+              >
+                {showConfirmPassword ? '🙈' : '👁️'}
+              </button>
+            </div>
+            {errors.confirmPassword && (
+              <p style={{ color: '#ef4444', fontSize: '12px', marginTop: '5px' }}>
+                {errors.confirmPassword.message}
+              </p>
+            )}
+          </div>
+
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              width: '100%',
+              padding: '12px 24px',
+              backgroundColor: loading ? '#ccc' : '#4CAF50',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '16px',
+              fontWeight: '600',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              marginTop: '10px'
+            }}
+          >
+            {loading ? 'Creating Account...' : 'Create Account'}
+          </button>
+
+          {/* Login Link */}
+          <div style={{ textAlign: 'center', marginTop: '20px' }}>
+            <span style={{ color: '#666', fontSize: '14px' }}>
+              Already have an account?{' '}
+              <Link 
+                to="/login" 
+                style={{ 
+                  color: '#4CAF50', 
+                  textDecoration: 'none',
+                  fontWeight: '500'
+                }}
+              >
+                Sign in
+              </Link>
+            </span>
+          </div>
+        </form>
+
+        {/* Terms */}
+        <div style={{ textAlign: 'center', marginTop: '30px' }}>
+          <p style={{
+            fontSize: '12px',
+            color: '#999',
+            lineHeight: '1.5',
+            margin: 0
+          }}>
             By creating an account, you agree to our{' '}
             <button
               onClick={() => alert('Terms of Service coming soon')}
-              className="text-primary hover:text-primary-hover bg-transparent border-none cursor-pointer underline"
+              style={{
+                color: '#4CAF50',
+                background: 'none',
+                border: 'none',
+                textDecoration: 'underline',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
             >
               Terms of Service
             </button>
             {' '}and{' '}
             <button
               onClick={() => alert('Privacy Policy coming soon')}
-              className="text-primary hover:text-primary-hover bg-transparent border-none cursor-pointer underline"
+              style={{
+                color: '#4CAF50',
+                background: 'none',
+                border: 'none',
+                textDecoration: 'underline',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
             >
               Privacy Policy
             </button>

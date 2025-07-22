@@ -11,11 +11,11 @@ module.exports = {
   ],
   rules: {
     "max-len": ["error", {
-      "code": 120,        // Increased from 80 to 120
+      "code": 150, // Increased from 120 to 150
       "ignoreUrls": true,
       "ignoreStrings": true,
       "ignoreTemplateLiterals": true,
-      "ignoreComments": true
+      "ignoreComments": true,
     }],
     "no-restricted-globals": ["error", "name", "length"],
     "prefer-arrow-callback": "error",
