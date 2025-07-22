@@ -1,4 +1,4 @@
-// src/components/BidModal.js - FIXED VERSION WITH SCROLL PROTECTION
+// src/components/BidModal.js - FIXED VERSION WITH SCROLL PROTECTION_Delinetd lines 10,194
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -7,7 +7,7 @@ import { doc, addDoc, updateDoc, collection, serverTimestamp } from 'firebase/fi
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-toastify';
-import { X, DollarSign, Calendar, Building, MapPin, Trash2 } from 'lucide-react';
+import { X, Trash2 } from 'lucide-react';
 import './BidModal.css';
 
 // Validation schema that handles undefined pricePerUnit for no-bid
@@ -190,16 +190,7 @@ function BidModal({ opportunity, existingBid, onClose }) {
       setLoading(false);
     }
   };
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-GB', {
-      style: 'currency',
-      currency: 'GBP',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(amount || 0);
-  };
-
+  
   // Calculate totals for display
   const calculateTotals = () => {
     let totalAmount = 0;
