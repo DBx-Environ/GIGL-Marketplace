@@ -1,4 +1,4 @@
-// src/App.js
+// src/App.js - Updated with EmailVerificationHandler route
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
@@ -13,6 +13,7 @@ import AdminPanel from './components/AdminPanel';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import EmailVerification from './components/EmailVerification';
+import EmailVerificationHandler from './components/EmailVerificationHandler';
 
 function ProtectedRoute({ children }) {
   const { currentUser, loading } = useAuth();
@@ -49,6 +50,7 @@ function AppRoutes() {
             currentUser ? <Navigate to="/dashboard" /> : <Register />
           } />
           <Route path="/verify-email" element={<EmailVerification />} />
+          <Route path="/verify-email-success" element={<EmailVerificationHandler />} />
           <Route path="/dashboard" element={
             <ProtectedRoute>
               <Dashboard />

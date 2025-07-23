@@ -1,4 +1,4 @@
-// src/contexts/AuthContext.js - CLEAN VERSION - WELCOME EMAIL REMOVED
+// src/contexts/AuthContext.js - UPDATED with custom verification URL
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { auth, db } from '../firebase/config';
 import { 
@@ -16,7 +16,6 @@ import {
   updateDoc, 
   serverTimestamp 
 } from 'firebase/firestore';
-
 
 const AuthContext = createContext();
 
@@ -81,9 +80,15 @@ export function AuthProvider({ children }) {
       await setDoc(doc(db, 'users', user.uid), userData);
       console.log('User document created in Firestore');
 
-      // Send email verification
-      await sendEmailVerification(user);
-      console.log('Verification email sent');
+      // Send email verification with custom action URL
+      const actionCodeSettings = {
+        // URL user will be redirected to after clicking the verification link
+        url: window.location.origin + '/verify-email-success',
+        handleCodeInApp: false // This ensures Firebase handles the verification server-side first
+      };
+
+      await sendEmailVerification(user, actionCodeSettings);
+      console.log('Verification email sent with custom action URL');
       
       return user;
     } catch (error) {

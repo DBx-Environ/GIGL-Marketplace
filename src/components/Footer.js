@@ -1,6 +1,6 @@
-// src/components/Footer.js - CLEAN PROFESSIONAL DESIGN
+// src/components/Footer.js - UPDATED WITH CORRECT COMPANY INFORMATION
 import React from 'react';
-import { Mail, Github, ExternalLink } from 'lucide-react';
+import { Mail, ExternalLink } from 'lucide-react';
 
 function Footer() {
   return (
@@ -151,7 +151,7 @@ function Footer() {
             </div>
           </div>
 
-          {/* Developer Section */}
+          {/* Development Section */}
           <div>
             <h4 style={{
               fontSize: '1rem',
@@ -175,51 +175,40 @@ function Footer() {
                 fontSize: '0.875rem'
               }}>
                 <span>Built by</span>
-                <strong style={{ color: '#f9fafb' }}>Baxter Environmental</strong>
-              </div>
-              <div style={{
-                display: 'flex',
-                gap: '1rem'
-              }}>
                 <a
-                  href="https://github.com/DBx-Environ/GIGL-Marketplace"
+                  href="https://www.baxterenvironmental.co.uk/"
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    color: '#d1d5db',
+                    color: '#f9fafb',
                     textDecoration: 'none',
-                    fontSize: '0.875rem',
-                    transition: 'color 0.2s ease',
-                    padding: '0.25rem 0'
+                    fontWeight: '600',
+                    transition: 'color 0.2s ease'
                   }}
                   onMouseEnter={(e) => e.target.style.color = '#10b981'}
-                  onMouseLeave={(e) => e.target.style.color = '#d1d5db'}
+                  onMouseLeave={(e) => e.target.style.color = '#f9fafb'}
                 >
-                  <Github size={14} />
-                  Source Code
-                </a>
-                <a
-                  href="mailto:david@baxterenvironmental.co.uk"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    color: '#d1d5db',
-                    textDecoration: 'none',
-                    fontSize: '0.875rem',
-                    transition: 'color 0.2s ease',
-                    padding: '0.25rem 0'
-                  }}
-                  onMouseEnter={(e) => e.target.style.color = '#10b981'}
-                  onMouseLeave={(e) => e.target.style.color = '#d1d5db'}
-                >
-                  <Mail size={14} />
-                  Developer
+                  David Baxter Environmental Ltd
                 </a>
               </div>
+              <a
+                href="mailto:david@baxterenvironmental.co.uk"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  color: '#d1d5db',
+                  textDecoration: 'none',
+                  fontSize: '0.875rem',
+                  transition: 'color 0.2s ease',
+                  padding: '0.25rem 0'
+                }}
+                onMouseEnter={(e) => e.target.style.color = '#10b981'}
+                onMouseLeave={(e) => e.target.style.color = '#d1d5db'}
+              >
+                <Mail size={14} />
+                Developer Contact
+              </a>
             </div>
           </div>
         </div>
@@ -236,14 +225,19 @@ function Footer() {
         }}>
           <div style={{
             display: 'flex',
-            alignItems: 'center',
-            gap: '1rem',
+            flexDirection: 'column',
+            gap: '0.5rem',
             fontSize: '0.875rem',
             color: '#9ca3af'
           }}>
-            <span>© 2025 GIGL Marketplace</span>
-            <span style={{ color: '#6b7280' }}>•</span>
-            <span>All rights reserved</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+              <span>© 2025 GIGL Ltd</span>
+              <span style={{ color: '#6b7280' }}>•</span>
+              <span>Company number 15872004</span>
+            </div>
+            <div style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
+              Registered office: Banovallum House, Manor House Street, Horncastle, Lincolnshire LN9 5HF
+            </div>
           </div>
           
           <div style={{
@@ -251,7 +245,22 @@ function Footer() {
             color: '#9ca3af',
             fontStyle: 'italic'
           }}>
-            Powered by Greater Lincolnshire Nature Partnership
+            Powered by{' '}
+            <a
+              href="https://www.lincstrust.org.uk/what-we-do/conservation-projects/gigl"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: '#10b981',
+                textDecoration: 'none',
+                fontWeight: '500',
+                transition: 'color 0.2s ease'
+              }}
+              onMouseEnter={(e) => e.target.style.color = '#059669'}
+              onMouseLeave={(e) => e.target.style.color = '#10b981'}
+            >
+              Green Investment in Greater Lincolnshire Ltd
+            </a>
           </div>
         </div>
       </div>
