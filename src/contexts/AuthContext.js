@@ -1,4 +1,4 @@
-// src/contexts/AuthContext.js - Fixed Version with Proper userData Loading
+// src/contexts/AuthContext.js - CLEAN VERSION - WELCOME EMAIL REMOVED
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { auth, db } from '../firebase/config';
 import { 
@@ -17,7 +17,6 @@ import {
   serverTimestamp 
 } from 'firebase/firestore';
 import { toast } from 'react-toastify';
-import { httpsCallable, getFunctions } from 'firebase/functions';
 
 const AuthContext = createContext();
 
@@ -29,9 +28,6 @@ export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  // Initialize Firebase Functions with correct region
-  const functions = getFunctions(undefined, 'europe-west2');
 
   // Function to load user data from Firestore
   const loadUserData = async (uid) => {
@@ -79,7 +75,6 @@ export function AuthProvider({ children }) {
         emailVerified: false,
         isAdmin: false,
         createdAt: serverTimestamp(),
-        welcomeEmailSent: false,
         registrationDate: serverTimestamp()
       };
 
@@ -132,47 +127,6 @@ export function AuthProvider({ children }) {
     }
   }
 
-  // Send welcome email function
-  async function sendWelcomeEmail(userDetails) {
-    try {
-      const sendEmail = httpsCallable(functions, 'sendWelcomeEmail');
-      await sendEmail(userDetails);
-      return true;
-    } catch (error) {
-      console.error('Error sending welcome email:', error);
-      return false;
-    }
-  }
-
-  // Handle welcome email on first verified login
-  async function handleWelcomeEmailOnLogin(user, userData) {
-    try {
-      // Send welcome email ONLY if email is verified and not already sent
-      if (user.emailVerified && !userData.welcomeEmailSent) {
-        console.log('Sending welcome email...');
-        
-        const emailSent = await sendWelcomeEmail({
-          email: user.email,
-          firstName: userData.firstName,
-          lastName: userData.lastName
-        });
-        
-        if (emailSent) {
-          // Mark as sent in Firestore
-          await updateDoc(doc(db, 'users', user.uid), {
-            welcomeEmailSent: true,
-            welcomeEmailSentAt: serverTimestamp()
-          });
-          
-          console.log('Welcome email sent and marked in Firestore');
-          toast.success('Welcome to GIGL! Check your email for getting started tips.');
-        }
-      }
-    } catch (error) {
-      console.error('Error handling welcome email:', error);
-    }
-  }
-
   useEffect(() => {
     console.log('AuthContext useEffect starting...');
     
@@ -206,9 +160,6 @@ export function AuthProvider({ children }) {
                   emailVerified: true
                 }));
               }
-              
-              // Handle welcome email
-              await handleWelcomeEmailOnLogin(user, userData);
               
               // Set current user
               setCurrentUser(user);
