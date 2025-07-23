@@ -2,7 +2,7 @@
 
 # 
 
-# !\[GIGL Logo](public/GIGL\_Logo\_small.png)
+# !\[GIGL Logo](public/GIGL\_Logo\_Small.png)
 
 # 
 
