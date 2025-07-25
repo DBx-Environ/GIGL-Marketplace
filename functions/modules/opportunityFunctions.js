@@ -1,595 +1,801 @@
-// functions/modules/opportunityFunctions.js - CLEAN PRODUCTION VERSION WITH JSDOC
+// functions/modules/opportunityFunctions.js - ENHANCED WITH MANUAL CLOSE REASONS
 const admin = require("firebase-admin");
 const functions = require("firebase-functions");
 const {sendBrevoEmail} = require("./emailFunctions");
 
 /**
- * Manually close a bid opportunity
- * @param {Object} data - The request data
- * @param {string} data.opportunityId - The ID of the opportunity to close
- * @param {string} data.reason - The reason for manual closure
- * @param {Object} context - The function context
- * @returns {Promise<Object>} Success response with results
+ * Manual close function called by admin - ENHANCED with reason handling
  */
 const closeBidOpportunity = functions
   .region("europe-west2")
-  .https.onCall(async (data, context) => {
+  .https
+  .onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "User must be authenticated");
+    }
+
+    const userDoc = await admin.firestore().collection("users").doc(context.auth.uid).get();
+    if (!userDoc.exists || !userDoc.data().isAdmin) {
+      throw new functions.https.HttpsError("permission-denied", "Only admins can close opportunities");
+    }
+
+    const {opportunityId, reason, reasonDetails} = data;
+    if (!opportunityId) {
+      throw new functions.https.HttpsError("invalid-argument", "opportunityId is required");
+    }
+
+    if (!reason) {
+      throw new functions.https.HttpsError("invalid-argument", "reason is required for manual close");
+    }
+
     try {
-      // Check authentication
-      if (!context.auth) {
-        throw new functions.https.HttpsError(
-          "unauthenticated",
-          "Must be authenticated to close opportunities"
-        );
-      }
-
-      // Check if user is admin
-      const userDoc = await admin.firestore()
-        .collection("users")
-        .doc(context.auth.uid)
-        .get();
-
-      if (!userDoc.exists || !userDoc.data().isAdmin) {
-        throw new functions.https.HttpsError(
-          "permission-denied",
-          "Only admins can close opportunities"
-        );
-      }
-
-      const {opportunityId, reason} = data;
-
-      if (!opportunityId) {
-        throw new functions.https.HttpsError(
-          "invalid-argument",
-          "Opportunity ID is required"
-        );
-      }
-
-      console.log(`🔒 MANUAL CLOSE: Admin ${context.auth.uid} closing opportunity ${opportunityId} - Reason: ${reason || "Not specified"}`);
-
-      // Process the opportunity
-      const result = await processOpportunityClose(opportunityId, reason);
-
-      return {
-        success: true,
-        message: "Opportunity closed successfully",
-        opportunityId,
-        reason: reason || "Manual close",
-        results: result,
-      };
+      console.log(`Admin ${context.auth.uid} manually closing opportunity: ${opportunityId} with reason: ${reason}`);
+      const result = await closeOpportunityLogic(opportunityId, "manual", reason, reasonDetails);
+      return result;
     } catch (error) {
       console.error("Error in closeBidOpportunity:", error);
-      if (error instanceof functions.https.HttpsError) {
-        throw error;
-      }
-      throw new functions.https.HttpsError(
-        "internal",
-        "Failed to close opportunity"
-      );
+      throw new functions.https.HttpsError("internal", error.message);
     }
   });
 
 /**
- * Scheduled function to automatically close expired opportunities
- * Runs every 4 hours
+ * Scheduled auto-close function - runs every 4 hours
  */
 const autoCloseOpportunities = functions
   .region("europe-west2")
-  .pubsub.schedule("0 */4 * * *")
+  .runWith({
+    timeoutSeconds: 540,
+    memory: "1GB",
+  })
+  .pubsub
+  .schedule("0 */4 * * *")
   .timeZone("Europe/London")
   .onRun(async (context) => {
+    console.log("Auto-close function triggered");
+
     try {
-      console.log("🕒 AUTO-CLOSE: Starting scheduled opportunity closure check");
-
-      const now = new Date();
-      console.log(`🕒 AUTO-CLOSE: Current time: ${now.toISOString()}`);
-
-      // Get all active opportunities
-      const snapshot = await admin.firestore()
-        .collection("bidOpportunities")
-        .where("status", "==", "active")
-        .get();
-
-      if (snapshot.empty) {
-        console.log("🕒 AUTO-CLOSE: No active opportunities found");
-        return null;
-      }
-
-      console.log(`🕒 AUTO-CLOSE: Found ${snapshot.size} active opportunities`);
-
-      const promises = [];
-      const expiredOpportunities = [];
-
-      snapshot.forEach((doc) => {
-        const opportunity = doc.data();
-        const opportunityId = doc.id;
-
-        // Parse closing date properly
-        let closingDate;
-        if (opportunity.closingDate?.toDate) {
-          closingDate = opportunity.closingDate.toDate();
-        } else if (opportunity.closingDate instanceof Date) {
-          closingDate = opportunity.closingDate;
-        } else if (typeof opportunity.closingDate === "string") {
-          closingDate = new Date(opportunity.closingDate);
-        } else {
-          console.error(`🕒 AUTO-CLOSE: Invalid closingDate for opportunity ${opportunityId}:`, opportunity.closingDate);
-          return;
-        }
-
-        const isExpired = closingDate <= now;
-
-        console.log(`🕒 AUTO-CLOSE: [${opportunityId}]: "${opportunity.title}" - Status: ${opportunity.status}, Expires: ${closingDate.toISOString()}, Expired: ${isExpired}`);
-
-        if (isExpired) {
-          expiredOpportunities.push({
-            id: opportunityId,
-            title: opportunity.title,
-            closingDate: closingDate.toISOString(),
-          });
-          promises.push(processOpportunityClose(opportunityId, "Automatic close - time expired"));
-        }
-      });
-
-      if (expiredOpportunities.length === 0) {
-        console.log("🕒 AUTO-CLOSE: No expired opportunities found");
-        return null;
-      }
-
-      console.log(`🕒 AUTO-CLOSE: Processing ${expiredOpportunities.length} expired opportunities`);
-
-      // Process all expired opportunities
-      const results = await Promise.allSettled(promises);
-
-      // Log results
-      results.forEach((result, index) => {
-        const opportunity = expiredOpportunities[index];
-        if (result.status === "fulfilled") {
-          console.log(`✅ AUTO-CLOSE: Successfully closed ${opportunity.id}: "${opportunity.title}"`);
-        } else {
-          console.error(`❌ AUTO-CLOSE: Failed to close ${opportunity.id}: "${opportunity.title}"`, result.reason);
-        }
-      });
-
-      console.log(`🕒 AUTO-CLOSE: Completed processing ${expiredOpportunities.length} opportunities`);
-      return null;
+      const result = await runAutoCloseLogic();
+      return result;
     } catch (error) {
-      console.error("❌ AUTO-CLOSE: Error in autoCloseOpportunities:", error);
-      return null;
+      console.error("Auto-close function error:", error);
+
+      await sendBrevoEmail(
+        "david@baxterenvironmental.co.uk",
+        "🚨 Auto-Close Function Error",
+        `
+          <h2>Auto-Close Function Error</h2>
+          <p><strong>Error Time:</strong> ${new Date().toISOString()}</p>
+          <p><strong>Error:</strong> ${error.message}</p>
+        `,
+        "auto_close_error"
+      );
+
+      return {success: false, error: error.message};
     }
   });
 
 /**
- * Process the closure of a single opportunity
- * @param {string} opportunityId - The ID of the opportunity to close
- * @param {string} reason - The reason for closure
- * @return {Promise<Object>} Results of the closure process
+ * Core auto-close logic
  */
-async function processOpportunityClose(opportunityId, reason) {
-  try {
-    console.log(`🔒 Processing closure for opportunity: ${opportunityId} - Reason: ${reason}`);
+async function runAutoCloseLogic() {
+  const nowUTC = new Date();
 
-    // Get the opportunity
-    const opportunityDoc = await admin.firestore()
-      .collection("bidOpportunities")
-      .doc(opportunityId)
-      .get();
+  console.log(`Auto-close running at: ${nowUTC.toISOString()}`);
 
-    if (!opportunityDoc.exists) {
-      throw new Error(`Opportunity ${opportunityId} not found`);
+  // Get all active opportunities
+  const activeOpportunitiesSnapshot = await admin.firestore()
+    .collection("bidOpportunities")
+    .where("status", "==", "active")
+    .get();
+
+  console.log(`Found ${activeOpportunitiesSnapshot.size} active opportunities`);
+
+  // Find expired opportunities
+  const expiredOpportunities = activeOpportunitiesSnapshot.docs.filter((doc) => {
+    const data = doc.data();
+    const closingDate = new Date(data.closingDate);
+    const isExpired = nowUTC > closingDate;
+
+    if (isExpired) {
+      console.log(`Opportunity "${data.title}" has expired (closed: ${closingDate.toISOString()})`);
     }
 
-    const opportunityData = opportunityDoc.data();
+    return isExpired;
+  });
 
-    // Get all bids for this opportunity
-    const bidsSnapshot = await admin.firestore()
-      .collection("bids")
-      .where("opportunityId", "==", opportunityId)
-      .where("status", "!=", "withdrawn")
-      .get();
+  console.log(`Found ${expiredOpportunities.length} expired opportunities`);
 
-    console.log(`🔒 Found ${bidsSnapshot.size} active bids for opportunity ${opportunityId}`);
+  if (expiredOpportunities.length === 0) {
+    console.log("No expired opportunities found");
+    return {success: true, processed: 0, message: "No expired opportunities found"};
+  }
 
-    const results = {
-      opportunityId,
-      opportunityTitle: opportunityData.title,
-      reason,
-      totalBids: bidsSnapshot.size,
-      winners: [],
-      emailsSent: 0,
-    };
+  // Process each expired opportunity
+  const results = [];
 
-    // Update opportunity status to closed
+  for (const doc of expiredOpportunities) {
+    const opportunityData = doc.data();
+
+    try {
+      console.log(`Processing expired opportunity: ${opportunityData.title}`);
+
+      const result = await closeOpportunityLogic(doc.id, "system");
+
+      console.log(`Successfully closed: ${opportunityData.title}`);
+
+      results.push({
+        opportunityId: doc.id,
+        title: opportunityData.title,
+        success: true,
+      });
+    } catch (error) {
+      console.error(`Failed to close ${doc.id}:`, error);
+
+      results.push({
+        opportunityId: doc.id,
+        title: opportunityData.title,
+        success: false,
+        error: error.message,
+      });
+    }
+  }
+
+  const successful = results.filter((r) => r.success).length;
+  const failed = results.filter((r) => !r.success).length;
+
+  console.log(`Auto-close summary: ${successful} successful, ${failed} failed`);
+
+  // Send summary report if any opportunities were processed
+  const resultsHtml = results.map((r) =>
+    `<div style="margin: 8px 0; padding: 8px; background: ${r.success ? "#dcfce7" : "#fef2f2"}; border-radius: 4px;">
+      <strong>${r.title}</strong><br>
+      ${r.success ? "✅ Successfully closed" : "❌ Failed: " + r.error}
+    </div>`
+  ).join("");
+
+  await sendBrevoEmail(
+    "david@baxterenvironmental.co.uk",
+    `Auto-Close Summary: ${successful} Closed${failed > 0 ? `, ${failed} Failed` : ""}`,
+    `
+      <h2>Auto-Close Function Summary</h2>
+      <p><strong>Run Time:</strong> ${nowUTC.toLocaleString("en-GB", {timeZone: "Europe/London"})} GMT</p>
+      <p><strong>Opportunities Processed:</strong> ${results.length}</p>
+      <p><strong>Successfully Closed:</strong> ${successful}</p>
+      ${failed > 0 ? `<p><strong>Failed:</strong> ${failed}</p>` : ""}
+      
+      <h3>Results:</h3>
+      ${resultsHtml}
+    `,
+    "auto_close_summary"
+  );
+
+  return {
+    success: true,
+    processed: results.length,
+    successful,
+    failed,
+  };
+}
+
+/**
+ * Core logic for closing opportunities and determining winners
+ * ENHANCED: Now handles manual close reasons
+ */
+async function closeOpportunityLogic(opportunityId, closedBy, reason = null, reasonDetails = "") {
+  console.log(`Closing opportunity ${opportunityId} (${closedBy}${reason ? ` - ${reason}` : ""})`);
+
+  // Get opportunity data
+  const opportunityDoc = await admin.firestore()
+    .collection("bidOpportunities")
+    .doc(opportunityId)
+    .get();
+
+  if (!opportunityDoc.exists) {
+    throw new Error("Opportunity not found");
+  }
+
+  const opportunityData = opportunityDoc.data();
+
+  // Get all bids for this opportunity
+  const bidsSnapshot = await admin.firestore()
+    .collection("bids")
+    .where("opportunityId", "==", opportunityId)
+    .get();
+
+  // Filter out withdrawn bids
+  const activeBids = bidsSnapshot.docs.filter((doc) => {
+    const bidData = doc.data();
+    return bidData.status !== "withdrawn";
+  });
+
+  console.log(`Found ${activeBids.length} active bids for ${opportunityData.title}`);
+
+  // Determine if we should determine winners based on close reason
+  const shouldDetermineWinners = closedBy === "system" ||
+    (closedBy === "manual" && reason === "early_close");
+
+  // Handle no bids scenario
+  if (activeBids.length === 0) {
+    console.log("No active bids - closing without winner");
+
     await admin.firestore()
       .collection("bidOpportunities")
       .doc(opportunityId)
       .update({
         status: "closed",
         closedAt: admin.firestore.FieldValue.serverTimestamp(),
-        closeReason: reason,
+        closedBy: closedBy,
+        closeReason: reason || null,
+        closeReasonDetails: reasonDetails || null,
+        winnerBidId: null,
+        winnerUserId: null,
+        winnerType: null,
       });
 
-    console.log(`✅ Opportunity ${opportunityId} status updated to closed`);
-
-    if (bidsSnapshot.empty) {
-      console.log(`📧 No bids received for opportunity ${opportunityId}, sending admin notification`);
-
-      // Send admin notification about no bids
-      await sendBrevoEmail({
-        to: "david@environ.uk.com",
-        subject: `No Bids Received - ${opportunityData.title}`,
-        htmlContent: `
-          <h2>Opportunity Closed - No Bids Received</h2>
-          <p>The opportunity "${opportunityData.title}" has been closed with no bids received.</p>
-          
-          <h3>Opportunity Details:</h3>
-          <ul>
-            <li><strong>Title:</strong> ${opportunityData.title}</li>
-            <li><strong>Location:</strong> ${opportunityData.location}</li>
-            <li><strong>Description:</strong> ${opportunityData.description}</li>
-            <li><strong>Closed:</strong> ${new Date().toLocaleString("en-GB", {timeZone: "Europe/London"})}</li>
-            <li><strong>Reason:</strong> ${reason}</li>
-          </ul>
-          
-          <p>No winner notifications were sent as no bids were received.</p>
-        `,
-      });
-
-      results.emailsSent = 1;
-      console.log(`✅ Admin notification sent for no-bid closure of ${opportunityId}`);
-      return results;
+    // Send appropriate notification based on close reason
+    if (closedBy === "manual" && reason) {
+      await sendManualCloseNotification(opportunityData, [], reason, reasonDetails);
+    } else {
+      await sendAdminNotification(opportunityData, null, "no_bids", closedBy);
     }
 
-    // Determine winners and send notifications
-    const bidResults = await determineWinnersAndNotify(
-      opportunityId,
-      opportunityData,
-      bidsSnapshot,
-      reason
-    );
-
-    results.winners = bidResults.winners;
-    results.emailsSent = bidResults.emailsSent;
-
-    console.log(`✅ Opportunity ${opportunityId} closure completed - ${results.emailsSent} emails sent`);
-    return results;
-  } catch (error) {
-    console.error(`❌ Error processing closure for opportunity ${opportunityId}:`, error);
-    throw error;
+    return {
+      success: true,
+      message: "Opportunity closed - no active bids received",
+    };
   }
+
+  let overallWinner = null;
+  let habitatWinners = {};
+  let winnerBidId = null;
+  let winnerUserId = null;
+  let winnerType = null;
+
+  // Only determine winners if appropriate
+  if (shouldDetermineWinners) {
+    // Get habitat requirements
+    const habitatRequirements = {};
+    if (opportunityData.habitatRequirements) {
+      opportunityData.habitatRequirements.forEach((req) => {
+        habitatRequirements[req.specificHabitat] = req.unitsRequired;
+      });
+    }
+
+    // Determine winners
+    const winnerResults = await determineWinners(activeBids, habitatRequirements);
+    overallWinner = winnerResults.overallWinner;
+    habitatWinners = winnerResults.habitatWinners;
+
+    // Determine primary winner
+    if (overallWinner) {
+      winnerBidId = overallWinner.bidId;
+      winnerUserId = overallWinner.userId;
+      winnerType = "overall";
+      console.log(`Overall winner: ${winnerUserId} with bid £${overallWinner.totalBid.toLocaleString()}`);
+    } else if (Object.keys(habitatWinners).length > 0) {
+      const firstHabitat = Object.keys(habitatWinners)[0];
+      winnerBidId = habitatWinners[firstHabitat].bidId;
+      winnerUserId = habitatWinners[firstHabitat].userId;
+      winnerType = "habitat";
+      console.log(`Habitat winner: ${winnerUserId} for ${Object.keys(habitatWinners).length} habitat(s)`);
+    }
+
+    // Update bid winner status
+    await updateBidWinnerStatus(activeBids, overallWinner, habitatWinners);
+  }
+
+  // Update opportunity status
+  await admin.firestore()
+    .collection("bidOpportunities")
+    .doc(opportunityId)
+    .update({
+      status: "closed",
+      closedAt: admin.firestore.FieldValue.serverTimestamp(),
+      closedBy: closedBy,
+      closeReason: reason || null,
+      closeReasonDetails: reasonDetails || null,
+      winnerBidId: winnerBidId,
+      winnerUserId: winnerUserId,
+      winnerType: winnerType,
+      overallWinner: overallWinner,
+      habitatWinners: habitatWinners,
+    });
+
+  // Send appropriate notifications
+  if (closedBy === "manual" && reason) {
+    await sendManualCloseNotification(opportunityData, activeBids, reason, reasonDetails, overallWinner, habitatWinners);
+  } else {
+    await sendBidderNotifications(activeBids, overallWinner, habitatWinners, opportunityData, closedBy);
+    await sendAdminNotification(opportunityData, {
+      overallWinner,
+      habitatWinners,
+      winnerType,
+      totalBids: activeBids.length,
+    }, "opportunity_closed", closedBy);
+  }
+
+  return {
+    success: true,
+    message: "Opportunity closed successfully",
+    winnerBidId: winnerBidId,
+    winnerUserId: winnerUserId,
+    overallWinner: overallWinner,
+    habitatWinners: habitatWinners,
+  };
 }
 
 /**
- * Determine winners and send notification emails
- * @param {string} opportunityId - The opportunity ID
- * @param {Object} opportunityData - The opportunity document data
- * @param {Object} bidsSnapshot - Firestore snapshot of bids
- * @param {string} closeReason - Reason for closure
- * @return {Promise<Object>} Results with winners and email count
+ * NEW: Send manual close notifications with specific reasons
  */
-async function determineWinnersAndNotify(opportunityId, opportunityData, bidsSnapshot, closeReason) {
-  try {
-    console.log(`🏆 Determining winners for opportunity: ${opportunityId}`);
+async function sendManualCloseNotification(opportunityData, activeBids, reason, reasonDetails, overallWinner = null, habitatWinners = {}) {
+  const reasonMessages = {
+    "error": "There was an error in the definition of the opportunity. Watch out for a repost of the opportunity - you will have to bid again.",
+    "withdrawn": "The buyer has withdrawn their requirement. Huge apologies for any inconvenience this has caused you.",
+    "early_close": "The buyer has asked for an early close. Winners have been determined via the usual methods. A separate email will follow to inform you of the outcome.",
+  };
 
-    // Handle different closure reasons
-    if (closeReason && (
-      closeReason.toLowerCase().includes("error") ||
-      closeReason.toLowerCase().includes("withdrawn") ||
-      closeReason.toLowerCase().includes("no winner")
-    )) {
-      console.log(`🚫 No winners determined due to closure reason: ${closeReason}`);
+  const reasonSubjects = {
+    "error": "⚠️ Opportunity Error",
+    "withdrawn": "🚫 Opportunity Withdrawn",
+    "early_close": "⏰ Early Close",
+  };
 
-      // Send notifications to all bidders about the situation
-      const notifications = [];
-      bidsSnapshot.forEach((bidDoc) => {
-        const bidData = bidDoc.data();
-        notifications.push(sendBidderNotification(bidData, opportunityData, "no_winner", closeReason));
-      });
+  const reasonColors = {
+    "error": "#dc2626",
+    "withdrawn": "#dc2626",
+    "early_close": "#f59e0b",
+  };
 
-      await Promise.allSettled(notifications);
+  const userMessage = reasonMessages[reason];
+  const emailSubject = reasonSubjects[reason];
+  const themeColor = reasonColors[reason];
 
-      return {
-        winners: [],
-        emailsSent: notifications.length,
+  // Get unique users who bid
+  const uniqueUsers = [...new Set(activeBids.map((doc) => doc.data().userId))];
+
+  for (const userId of uniqueUsers) {
+    try {
+      const userDoc = await admin.firestore().collection("users").doc(userId).get();
+      if (!userDoc.exists) continue;
+
+      const userData = userDoc.data();
+
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: ${themeColor}; padding: 20px; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">${emailSubject}</h1>
+            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">GIGL Marketplace</p>
+          </div>
+          
+          <div style="padding: 30px; background: #f9f9f9;">
+            <h2 style="color: #333; margin-top: 0;">Hello ${userData.firstName} ${userData.lastName}!</h2>
+            
+            <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${themeColor};">
+              <h3 style="color: ${themeColor}; margin-top: 0;">Opportunity Update</h3>
+              <p style="margin: 5px 0;"><strong>Title:</strong> ${opportunityData.title}</p>
+              <p style="margin: 5px 0;"><strong>LPA:</strong> ${opportunityData.lpa}</p>
+              <p style="margin: 5px 0;"><strong>NCA:</strong> ${opportunityData.nca}</p>
+            </div>
+            
+            <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+              <p style="margin: 0; color: #92400e; font-size: 16px; line-height: 1.6;">
+                ${userMessage}
+              </p>
+              ${reasonDetails ? `
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #fbbf24;">
+                  <p style="margin: 0; color: #92400e; font-size: 14px;">
+                    <strong>Additional Details:</strong><br>
+                    ${reasonDetails}
+                  </p>
+                </div>
+              ` : ""}
+            </div>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="https://gigl-marketplace-v3.web.app/dashboard" 
+                 style="background-color: #2563eb; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                View Dashboard
+              </a>
+            </div>
+          </div>
+          
+          <div style="background: #333; padding: 20px; text-align: center; color: #ccc; font-size: 12px;">
+            <p style="margin: 0;">GIGL Marketplace - Biodiversity Net Gain Trading Platform</p>
+          </div>
+        </div>
+      `;
+
+      await sendBrevoEmail(userData.email, `${emailSubject} - ${opportunityData.title}`, htmlContent, `manual_close_${reason}`);
+    } catch (error) {
+      console.error(`Error sending manual close notification to user ${userId}:`, error);
+    }
+  }
+
+  // If early close with winners, also send winner notifications
+  if (reason === "early_close" && (overallWinner || Object.keys(habitatWinners).length > 0)) {
+    await sendBidderNotifications(activeBids, overallWinner, habitatWinners, opportunityData, "manual");
+  }
+
+  // Send admin notification about manual close
+  await sendAdminManualCloseNotification(opportunityData, activeBids.length, reason, reasonDetails);
+}
+
+/**
+ * NEW: Send admin notification about manual close
+ */
+async function sendAdminManualCloseNotification(opportunityData, bidCount, reason, reasonDetails) {
+  const reasonLabels = {
+    "error": "Error in Opportunity Definition",
+    "withdrawn": "Buyer Withdrew Requirement",
+    "early_close": "Early Close by Buyer Request",
+  };
+
+  const subject = `🔧 Manual Close: ${reasonLabels[reason]} - ${opportunityData.title}`;
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #6b7280; padding: 20px; text-align: center;">
+        <h1 style="color: white; margin: 0;">🔧 Manual Close Executed</h1>
+        <p style="color: #d1d5db; margin: 10px 0 0 0; font-size: 14px;">GIGL Marketplace Admin</p>
+      </div>
+      
+      <div style="padding: 30px; background: #f9f9f9;">
+        <h2 style="color: #333; margin-top: 0;">Manual Close Summary</h2>
+        
+        <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #6b7280; margin-top: 0;">Opportunity Details</h3>
+          <p><strong>Title:</strong> ${opportunityData.title}</p>
+          <p><strong>LPA:</strong> ${opportunityData.lpa}</p>
+          <p><strong>NCA:</strong> ${opportunityData.nca}</p>
+          <p><strong>Total Bids:</strong> ${bidCount}</p>
+        </div>
+        
+        <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #6b7280; margin-top: 0;">Close Details</h3>
+          <p><strong>Reason:</strong> ${reasonLabels[reason]}</p>
+          <p><strong>Closed:</strong> ${new Date().toLocaleString("en-GB", {timeZone: "Europe/London"})} GMT</p>
+          ${reasonDetails ? `<p><strong>Additional Details:</strong><br>${reasonDetails}</p>` : ""}
+        </div>
+        
+        <p>All bidders have been notified with appropriate messaging for this close reason.</p>
+      </div>
+    </div>
+  `;
+
+  await sendBrevoEmail("david@baxterenvironmental.co.uk", subject, htmlContent, "admin_manual_close");
+}
+
+/**
+ * Winner determination logic (unchanged)
+ */
+async function determineWinners(activeBids, habitatRequirements) {
+  const userBids = {};
+  const habitatBids = {};
+
+  // Process all bids
+  activeBids.forEach((bidDoc) => {
+    const bid = {id: bidDoc.id, ...bidDoc.data()};
+    const userId = bid.userId;
+
+    if (!userBids[userId]) {
+      userBids[userId] = {
+        userId: userId,
+        bids: [],
+        totalBid: 0,
+        habitatCoverage: {},
       };
     }
 
-    const bids = [];
-    bidsSnapshot.forEach((doc) => {
-      bids.push({
-        id: doc.id,
-        ...doc.data(),
-      });
-    });
+    userBids[userId].bids.push(bid);
+    userBids[userId].totalBid += bid.bidAmount;
 
-    // Sort bids by amount (highest first)
-    bids.sort((a, b) => b.bidAmount - a.bidAmount);
+    // Process habitat-specific bids
+    if (bid.habitatBids && Array.isArray(bid.habitatBids)) {
+      bid.habitatBids.forEach((habitatBid) => {
+        if (habitatBid.bidType === "no-bid") return;
 
-    const winners = [];
-    let emailsSent = 0;
+        const habitatType = habitatBid.specificHabitat;
 
-    // Determine if we have habitat requirements
-    const hasHabitatRequirements = opportunityData.habitatRequirements &&
-      Object.keys(opportunityData.habitatRequirements).length > 0;
-
-    if (hasHabitatRequirements) {
-      console.log(`🌿 Processing habitat-specific winners for ${opportunityId}`);
-
-      // Find winners for each habitat requirement
-      for (const [habitat] of Object.entries(opportunityData.habitatRequirements)) {
-        const habitatBids = bids.filter((bid) =>
-          bid.habitatBids &&
-          bid.habitatBids[habitat] &&
-          bid.habitatBids[habitat].type === "bid" &&
-          bid.habitatBids[habitat].amount > 0
-        );
-
-        if (habitatBids.length > 0) {
-          // Sort by habitat-specific bid amount
-          habitatBids.sort((a, b) =>
-            b.habitatBids[habitat].amount - a.habitatBids[habitat].amount
-          );
-
-          const winner = habitatBids[0];
-          winners.push({
-            bidId: winner.id,
-            userId: winner.userId,
-            bidAmount: winner.bidAmount,
-            winningType: "habitat",
-            habitat: habitat,
-            habitatAmount: winner.habitatBids[habitat].amount,
-          });
-
-          // Update bid document
-          await admin.firestore()
-            .collection("bids")
-            .doc(winner.id)
-            .update({
-              isWinning: true,
-              winningType: "habitat",
-              winningHabitat: habitat,
-              winningAmount: winner.habitatBids[habitat].amount,
-            });
-
-          console.log(`🏆 Habitat winner - ${habitat}: Bid ${winner.id} (£${winner.habitatBids[habitat].amount})`);
+        if (!habitatBids[habitatType]) {
+          habitatBids[habitatType] = [];
         }
-      }
-    } else {
-      console.log(`💰 Processing overall winner for ${opportunityId}`);
 
-      // No habitat requirements - overall highest bid wins
-      if (bids.length > 0) {
-        const winner = bids[0];
-        winners.push({
-          bidId: winner.id,
-          userId: winner.userId,
-          bidAmount: winner.bidAmount,
-          winningType: "overall",
+        const pricePerUnit = habitatBid.pricePerUnit || (habitatBid.subtotal / habitatBid.unitsRequired);
+
+        habitatBids[habitatType].push({
+          userId: userId,
+          bidId: bid.id,
+          units: habitatBid.unitsRequired,
+          bidAmount: habitatBid.subtotal,
+          pricePerUnit: pricePerUnit,
         });
 
-        // Update bid document
-        await admin.firestore()
-          .collection("bids")
-          .doc(winner.id)
-          .update({
-            isWinning: true,
-            winningType: "overall",
-            winningAmount: winner.bidAmount,
-          });
-
-        console.log(`🏆 Overall winner: Bid ${winner.id} (£${winner.bidAmount})`);
-      }
-    }
-
-    // Send notifications to all bidders
-    const notifications = [];
-
-    bids.forEach((bid) => {
-      const isWinner = winners.some((w) => w.bidId === bid.id);
-      const winnerInfo = winners.find((w) => w.bidId === bid.id);
-
-      if (isWinner) {
-        notifications.push(sendBidderNotification(bid, opportunityData, "winner", closeReason, winnerInfo));
-      } else {
-        notifications.push(sendBidderNotification(bid, opportunityData, "loser", closeReason));
-      }
-    });
-
-    // Send admin summary
-    notifications.push(sendAdminSummary(opportunityData, winners, bids, closeReason));
-
-    const notificationResults = await Promise.allSettled(notifications);
-    emailsSent = notificationResults.filter((result) => result.status === "fulfilled").length;
-
-    console.log(`📧 Sent ${emailsSent} winner/loser notifications for ${opportunityId}`);
-
-    return {
-      winners,
-      emailsSent,
-    };
-  } catch (error) {
-    console.error(`❌ Error determining winners for ${opportunityId}:`, error);
-    throw error;
-  }
-}
-
-/**
- * Send notification to a bidder about the opportunity outcome
- * @param {Object} bidData - The bid document data
- * @param {Object} opportunityData - The opportunity document data
- * @param {string} type - Type of notification ("winner", "loser", "no_winner")
- * @param {string} closeReason - Reason for closure
- * @param {Object} [winnerInfo] - Winner information if applicable
- * @return {Promise<void>}
- */
-async function sendBidderNotification(bidData, opportunityData, type, closeReason, winnerInfo = null) {
-  try {
-    // Get user data
-    const userDoc = await admin.firestore()
-      .collection("users")
-      .doc(bidData.userId)
-      .get();
-
-    if (!userDoc.exists) {
-      console.error(`User ${bidData.userId} not found`);
-      return;
-    }
-
-    const userData = userDoc.data();
-
-    let subject; let message;
-
-    if (type === "winner") {
-      const winType = winnerInfo.winningType === "habitat" ?
-        `${winnerInfo.habitat} habitat (£${winnerInfo.habitatAmount})` :
-        `overall bid (£${winnerInfo.bidAmount})`;
-
-      subject = `🎉 Congratulations! You won - ${opportunityData.title}`;
-      message = `
-        <h2>🎉 Congratulations! You're the Winner!</h2>
-        <p>Your bid for "${opportunityData.title}" has been successful!</p>
-        
-        <h3>Winning Details:</h3>
-        <ul>
-          <li><strong>Winning Category:</strong> ${winType}</li>
-          <li><strong>Your Total Bid:</strong> £${bidData.bidAmount}</li>
-          <li><strong>Location:</strong> ${opportunityData.location}</li>
-        </ul>
-        
-        <h3>Next Steps:</h3>
-        <p>We'll be in touch shortly with contract details and next steps.</p>
-        <p>Thank you for participating in the GIGL Marketplace!</p>
-        
-        <p><em>Closed: ${closeReason}</em></p>
-      `;
-    } else if (type === "loser") {
-      subject = `Bidding Closed - ${opportunityData.title}`;
-      message = `
-        <h2>Bidding Has Closed</h2>
-        <p>Thank you for your bid on "${opportunityData.title}".</p>
-        
-        <h3>Your Bid Details:</h3>
-        <ul>
-          <li><strong>Your Bid Amount:</strong> £${bidData.bidAmount}</li>
-          <li><strong>Location:</strong> ${opportunityData.location}</li>
-        </ul>
-        
-        <p>Unfortunately, your bid was not selected this time. However, we appreciate your participation and encourage you to bid on future opportunities.</p>
-        
-        <p>Keep an eye out for new opportunities in the GIGL Marketplace!</p>
-        
-        <p><em>Closed: ${closeReason}</em></p>
-      `;
-    } else if (type === "no_winner") {
-      subject = `Opportunity Closed - ${opportunityData.title}`;
-
-      if (closeReason.toLowerCase().includes("error")) {
-        message = `
-          <h2>Opportunity Closed Due to Error</h2>
-          <p>The opportunity "${opportunityData.title}" has been closed due to an error in the opportunity definition.</p>
-          
-          <h3>Your Bid Details:</h3>
-          <ul>
-            <li><strong>Your Bid Amount:</strong> £${bidData.bidAmount}</li>
-            <li><strong>Location:</strong> ${opportunityData.location}</li>
-          </ul>
-          
-          <p><strong>Watch out for a repost of this opportunity - you will have to bid again.</strong></p>
-          
-          <p>We apologize for any inconvenience caused.</p>
-        `;
-      } else {
-        message = `
-          <h2>Opportunity Closed</h2>
-          <p>The opportunity "${opportunityData.title}" has been closed.</p>
-          
-          <h3>Your Bid Details:</h3>
-          <ul>
-            <li><strong>Your Bid Amount:</strong> £${bidData.bidAmount}</li>
-            <li><strong>Location:</strong> ${opportunityData.location}</li>
-          </ul>
-          
-          <p>No winners were determined for this opportunity.</p>
-          
-          <p><em>Reason: ${closeReason}</em></p>
-        `;
-      }
-    }
-
-    await sendBrevoEmail({
-      to: userData.email,
-      subject: subject,
-      htmlContent: message,
-    });
-
-    console.log(`✅ ${type} notification sent to ${userData.email}`);
-  } catch (error) {
-    console.error(`❌ Error sending ${type} notification to ${bidData.userId}:`, error);
-  }
-}
-
-/**
- * Send admin summary of opportunity closure
- * @param {Object} opportunityData - The opportunity document data
- * @param {Array} winners - Array of winner information
- * @param {Array} bids - Array of all bids
- * @param {string} closeReason - Reason for closure
- * @return {Promise<void>}
- */
-async function sendAdminSummary(opportunityData, winners, bids, closeReason) {
-  try {
-    const subject = `Opportunity Closed - ${opportunityData.title}`;
-
-    const winnersList = winners.length > 0 ?
-      winners.map((w) => {
-        const bid = bids.find((b) => b.id === w.bidId);
-        const userData = `User: ${bid.userId}`;
-        if (w.winningType === "habitat") {
-          return `• ${w.habitat}: £${w.habitatAmount} (${userData})`;
-        } else {
-          return `• Overall: £${w.bidAmount} (${userData})`;
+        // Track coverage
+        if (!userBids[userId].habitatCoverage[habitatType]) {
+          userBids[userId].habitatCoverage[habitatType] = {
+            totalUnits: 0,
+            totalCost: 0,
+            bids: [],
+          };
         }
-      }).join("\n") :
-      "No winners determined";
 
-    const bidsList = bids.map((bid) =>
-      `• £${bid.bidAmount} - User: ${bid.userId} (${bid.createdAt ? new Date(bid.createdAt.toDate()).toLocaleString() : "Unknown date"})`
-    ).join("\n");
+        userBids[userId].habitatCoverage[habitatType].totalUnits += habitatBid.unitsRequired;
+        userBids[userId].habitatCoverage[habitatType].totalCost += habitatBid.subtotal;
+        userBids[userId].habitatCoverage[habitatType].bids.push(habitatBid);
+      });
+    }
+  });
 
-    const message = `
-      <h2>Opportunity Closure Summary</h2>
-      <p>The opportunity "${opportunityData.title}" has been closed.</p>
-      
-      <h3>Opportunity Details:</h3>
-      <ul>
-        <li><strong>Location:</strong> ${opportunityData.location}</li>
-        <li><strong>Description:</strong> ${opportunityData.description}</li>
-        <li><strong>Total Bids Received:</strong> ${bids.length}</li>
-        <li><strong>Winners Selected:</strong> ${winners.length}</li>
-        <li><strong>Closure Reason:</strong> ${closeReason}</li>
-      </ul>
-      
-      <h3>Winners:</h3>
-      <pre>${winnersList}</pre>
-      
-      <h3>All Bids:</h3>
-      <pre>${bidsList}</pre>
-      
-      <p>All bidders have been notified of the results.</p>
-    `;
+  // Find overall winner
+  let overallWinner = null;
+  let lowestOverallBid = Infinity;
 
-    await sendBrevoEmail({
-      to: "david@environ.uk.com",
-      subject: subject,
-      htmlContent: message,
+  Object.values(userBids).forEach((user) => {
+    const coversAllHabitats = Object.keys(habitatRequirements).every((requiredHabitat) => {
+      const userCoverage = user.habitatCoverage[requiredHabitat];
+      return userCoverage && userCoverage.totalUnits >= habitatRequirements[requiredHabitat];
     });
 
-    console.log(`✅ Admin summary sent for ${opportunityData.title}`);
-  } catch (error) {
-    console.error(`❌ Error sending admin summary:`, error);
+    if (coversAllHabitats && user.totalBid < lowestOverallBid) {
+      lowestOverallBid = user.totalBid;
+      overallWinner = {
+        userId: user.userId,
+        bidId: user.bids[0].id,
+        totalBid: user.totalBid,
+        habitatCoverage: user.habitatCoverage,
+      };
+    }
+  });
+
+  // Find habitat-specific winners
+  const habitatWinners = {};
+
+  Object.keys(habitatRequirements).forEach((habitatType) => {
+    if (habitatBids[habitatType]) {
+      let lowestPricePerUnit = Infinity;
+      let winner = null;
+
+      habitatBids[habitatType].forEach((bid) => {
+        if (bid.pricePerUnit < lowestPricePerUnit) {
+          lowestPricePerUnit = bid.pricePerUnit;
+          winner = {...bid, totalCost: bid.bidAmount};
+        }
+      });
+
+      if (winner) {
+        habitatWinners[habitatType] = winner;
+      }
+    }
+  });
+
+  return {overallWinner, habitatWinners};
+}
+
+/**
+ * Update bid documents with winner status (unchanged)
+ */
+async function updateBidWinnerStatus(activeBids, overallWinner, habitatWinners) {
+  const updatePromises = activeBids.map(async (bidDoc) => {
+    const bidData = bidDoc.data();
+    const bidId = bidDoc.id;
+    const userId = bidData.userId;
+
+    let isWinning = false;
+    let winningType = null;
+    const habitatWins = {};
+
+    // Check overall winner
+    if (overallWinner && overallWinner.userId === userId) {
+      isWinning = true;
+      winningType = "overall";
+    }
+
+    // Check habitat winners
+    Object.entries(habitatWinners).forEach(([habitatType, winner]) => {
+      if (winner.userId === userId) {
+        isWinning = true;
+        if (!winningType) winningType = "habitat";
+
+        habitatWins[habitatType] = {
+          isWinner: true,
+          unitsWon: winner.units,
+          pricePerUnit: winner.pricePerUnit,
+        };
+      }
+    });
+
+    // Update bid document
+    await admin.firestore()
+      .collection("bids")
+      .doc(bidId)
+      .update({
+        isWinning: isWinning,
+        winningType: winningType,
+        habitatWins: habitatWins,
+      });
+  });
+
+  await Promise.all(updatePromises);
+}
+
+/**
+ * Send notification emails to bidders (unchanged)
+ */
+async function sendBidderNotifications(activeBids, overallWinner, habitatWinners, opportunityData, closedBy) {
+  const uniqueUsers = [...new Set(activeBids.map((doc) => doc.data().userId))];
+
+  for (const userId of uniqueUsers) {
+    try {
+      const userDoc = await admin.firestore().collection("users").doc(userId).get();
+      if (!userDoc.exists) continue;
+
+      const userData = userDoc.data();
+
+      // Determine winner status
+      let isOverallWinner = false;
+      const habitatWins = [];
+
+      if (overallWinner && overallWinner.userId === userId) {
+        isOverallWinner = true;
+      }
+
+      Object.entries(habitatWinners).forEach(([habitat, winner]) => {
+        if (winner.userId === userId) {
+          habitatWins.push({habitat, ...winner});
+        }
+      });
+
+      const isWinner = isOverallWinner || habitatWins.length > 0;
+
+      // Send appropriate email
+      let subject; let htmlContent;
+
+      if (isOverallWinner) {
+        subject = `🏆 OVERALL WINNER - ${opportunityData.title}`;
+        htmlContent = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); padding: 20px; text-align: center;">
+              <h1 style="color: white; margin: 0; font-size: 28px;">🏆 OVERALL WINNER!</h1>
+            </div>
+            <div style="padding: 30px; background: #f9f9f9;">
+              <h2>Congratulations ${userData.firstName} ${userData.lastName}!</h2>
+              <p>You won the entire contract for £${overallWinner.totalBid.toLocaleString()}!</p>
+              <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <h3>Opportunity: ${opportunityData.title}</h3>
+                <p><strong>LPA:</strong> ${opportunityData.lpa}</p>
+                <p><strong>NCA:</strong> ${opportunityData.nca}</p>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (habitatWins.length > 0) {
+        subject = `🌱 HABITAT WINNER - ${opportunityData.title}`;
+        const habitatList = habitatWins.map((hw) => `${hw.habitat}`).join(", ");
+        htmlContent = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="background: linear-gradient(135deg, #8BC34A 0%, #689F38 100%); padding: 20px; text-align: center;">
+              <h1 style="color: white; margin: 0; font-size: 28px;">🌱 HABITAT WINNER!</h1>
+            </div>
+            <div style="padding: 30px; background: #f9f9f9;">
+              <h2>Congratulations ${userData.firstName} ${userData.lastName}!</h2>
+              <p>You won specific habitat types: ${habitatList}</p>
+              <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <h3>Opportunity: ${opportunityData.title}</h3>
+                <p><strong>LPA:</strong> ${opportunityData.lpa}</p>
+                <p><strong>NCA:</strong> ${opportunityData.nca}</p>
+              </div>
+            </div>
+          </div>
+        `;
+      } else {
+        subject = `Bid Update - ${opportunityData.title}`;
+        htmlContent = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="background: #2196F3; padding: 20px; text-align: center;">
+              <h1 style="color: white; margin: 0;">Bid Update</h1>
+            </div>
+            <div style="padding: 30px; background: #f9f9f9;">
+              <h2>Thank you ${userData.firstName} ${userData.lastName}!</h2>
+              <p>Unfortunately, your bid for <strong>${opportunityData.title}</strong> was not selected.</p>
+              <p>Keep bidding! New opportunities are posted regularly on the GIGL Marketplace.</p>
+            </div>
+          </div>
+        `;
+      }
+
+      await sendBrevoEmail(userData.email, subject, htmlContent, isWinner ? (isOverallWinner ? "overall_winner" : "habitat_winner") : "not_selected");
+    } catch (error) {
+      console.error(`Error sending notification to user ${userId}:`, error);
+    }
   }
 }
 
+/**
+ * Send admin notification email (unchanged)
+ */
+async function sendAdminNotification(opportunityData, winnerData, type, closedBy) {
+  try {
+    let subject; let htmlContent;
+
+    if (type === "no_bids") {
+      subject = `No Bids Received - ${opportunityData.title}`;
+      htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #f59e0b; padding: 20px; text-align: center;">
+            <h1 style="color: white; margin: 0;">📭 No Bids Received</h1>
+          </div>
+          <div style="padding: 30px; background: #f9f9f9;">
+            <h2>Opportunity Closed Without Bids</h2>
+            <p>The opportunity "<strong>${opportunityData.title}</strong>" has closed without receiving any active bids.</p>
+            
+            <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3>Opportunity Details:</h3>
+              <p><strong>Title:</strong> ${opportunityData.title}</p>
+              <p><strong>LPA:</strong> ${opportunityData.lpa}</p>
+              <p><strong>NCA:</strong> ${opportunityData.nca}</p>
+              <p><strong>Closed by:</strong> ${closedBy === "system" ? "System (Auto-Close)" : "Manual"}</p>
+              <p><strong>Closed at:</strong> ${new Date().toLocaleString("en-GB", {timeZone: "Europe/London"})} GMT</p>
+            </div>
+          </div>
+        </div>
+      `;
+    } else {
+      subject = `Winners Selected - ${opportunityData.title}`;
+
+      let winnerSummary = "";
+      if (winnerData.overallWinner) {
+        winnerSummary += `
+          <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin: 10px 0;">
+            <h3 style="color: #4CAF50; margin-top: 0;">🏆 Overall Winner</h3>
+            <p><strong>User:</strong> ${winnerData.overallWinner.userId}</p>
+            <p><strong>Total Bid:</strong> £${winnerData.overallWinner.totalBid.toLocaleString()}</p>
+          </div>
+        `;
+      }
+
+      if (Object.keys(winnerData.habitatWinners).length > 0) {
+        winnerSummary += `
+          <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin: 10px 0;">
+            <h3 style="color: #8BC34A; margin-top: 0;">🌱 Habitat Winners</h3>
+        `;
+
+        Object.entries(winnerData.habitatWinners).forEach(([habitat, winner]) => {
+          winnerSummary += `
+            <p><strong>${habitat}:</strong> ${winner.userId} - £${winner.pricePerUnit.toLocaleString()}/unit</p>
+          `;
+        });
+
+        winnerSummary += `</div>`;
+      }
+
+      htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #4CAF50; padding: 20px; text-align: center;">
+            <h1 style="color: white; margin: 0;">🎉 Winners Selected</h1>
+          </div>
+          <div style="padding: 30px; background: #f9f9f9;">
+            <h2>${opportunityData.title}</h2>
+            <p><strong>Total bids:</strong> ${winnerData.totalBids}</p>
+            <p><strong>LPA:</strong> ${opportunityData.lpa}</p>
+            <p><strong>NCA:</strong> ${opportunityData.nca}</p>
+            <p><strong>Closed by:</strong> ${closedBy === "system" ? "System (Auto-Close)" : "Manual"}</p>
+            
+            <h2>Results:</h2>
+            ${winnerSummary}
+            
+            <p>All bidders have been notified of the results.</p>
+          </div>
+        </div>
+      `;
+    }
+
+    await sendBrevoEmail("david@baxterenvironmental.co.uk", subject, htmlContent, "admin_close");
+  } catch (error) {
+    console.error("Error sending admin notification:", error);
+  }
+}
+
+// Export functions
 module.exports = {
   closeBidOpportunity,
   autoCloseOpportunities,

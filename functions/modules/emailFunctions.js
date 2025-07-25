@@ -1,114 +1,170 @@
-// functions/modules/emailFunctions.js - WORKING AXIOS VERSION WITH JSDOC
+// functions/modules/emailFunctions.js - WORKING FRIDAY VERSION WITH AXIOS
+const admin = require("firebase-admin");
 const functions = require("firebase-functions");
 const axios = require("axios");
 
 /**
- * Sends an email using the Brevo API
- * @param {Object} emailData - The email data object
- * @param {string} emailData.to - The recipient email address
- * @param {string} emailData.subject - The email subject line
- * @param {string} emailData.htmlContent - The HTML content of the email
- * @param {string} [emailData.textContent] - The plain text content (optional)
- * @return {Promise<Object>} The API response from Brevo
+ * Shared utility function for sending emails via Brevo API using Axios
  */
-async function sendBrevoEmail({to, subject, htmlContent, textContent}) {
+async function sendBrevoEmail(to, subject, htmlContent, type = "general") {
   try {
-    const apiKey = functions.config().brevo?.api_key;
+    console.log(`Attempting to send email to ${to} with subject: ${subject}`);
 
-    if (!apiKey) {
+    const brevoApiKey = functions.config().brevo?.api_key;
+    if (!brevoApiKey) {
       throw new Error("Brevo API key not configured");
     }
 
     const emailData = {
       sender: {
         name: "GIGL Marketplace",
-        email: "noreply@environ.uk.com",
+        email: "db-env@outlook.com",
       },
-      to: [
-        {
-          email: to,
-        },
-      ],
+      to: [{email: to}],
       subject: subject,
       htmlContent: htmlContent,
     };
-
-    // Add text content if provided
-    if (textContent) {
-      emailData.textContent = textContent;
-    }
 
     const response = await axios.post(
       "https://api.brevo.com/v3/smtp/email",
       emailData,
       {
         headers: {
-          "api-key": apiKey,
           "Content-Type": "application/json",
+          "api-key": brevoApiKey,
         },
       }
     );
 
-    console.log("✅ Email sent successfully via Brevo:", {
-      to,
-      subject,
+    console.log(`✅ Email sent to ${to}: ${subject}`);
+
+    // Log success to Firestore
+    await admin.firestore().collection("emailLogs").add({
+      to: to,
+      subject: subject,
+      status: "sent",
+      type: type,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
       messageId: response.data.messageId,
     });
 
-    return response.data;
+    return {success: true, messageId: response.data.messageId};
   } catch (error) {
-    console.error("❌ Error sending email via Brevo:", {
-      to,
-      subject,
+    console.error(`❌ Failed to send email to ${to}:`, error);
+
+    // Log error to Firestore
+    await admin.firestore().collection("emailLogs").add({
+      to: to,
+      subject: subject,
+      status: "failed",
+      type: type,
       error: error.message,
-      response: error.response?.data,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
     });
+
     throw error;
   }
 }
 
 /**
- * Cloud Function to send notification emails
- * @param {Object} data - The request data
- * @param {string} data.to - The recipient email address
- * @param {string} data.subject - The email subject line
- * @param {string} data.message - The email message content
- * @param {Object} context - The function context
- * @returns {Promise<Object>} Success response
+ * Callable function to send notification emails
  */
 const sendNotificationEmail = functions
   .region("europe-west2")
-  .https.onCall(async (data, context) => {
+  .https
+  .onCall(async (data, context) => {
     try {
-      // Basic validation
-      if (!data.to || !data.subject || !data.message) {
-        throw new functions.https.HttpsError(
-          "invalid-argument",
-          "Missing required fields: to, subject, message"
-        );
+      const {to, subject, htmlContent} = data;
+
+      const brevoApiKey = functions.config().brevo?.api_key;
+      if (!brevoApiKey) {
+        throw new Error("Brevo API key not configured");
       }
 
-      // Send the email
-      await sendBrevoEmail({
-        to: data.to,
-        subject: data.subject,
-        htmlContent: data.message,
-      });
-
-      return {
-        success: true,
-        message: "Email sent successfully",
+      const emailData = {
+        sender: {
+          name: "GIGL Marketplace",
+          email: "db-env@outlook.com",
+        },
+        to: [{email: to}],
+        subject: subject,
+        htmlContent: htmlContent,
       };
-    } catch (error) {
-      console.error("Error in sendNotificationEmail:", error);
-      throw new functions.https.HttpsError(
-        "internal",
-        "Failed to send email"
+
+      const response = await axios.post(
+        "https://api.brevo.com/v3/smtp/email",
+        emailData,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "api-key": brevoApiKey,
+          },
+        }
       );
+
+      console.log("Email sent successfully:", response.data);
+      return {success: true, messageId: response.data.messageId};
+    } catch (error) {
+      console.error("Error sending email:", error);
+      throw new functions.https.HttpsError("internal", error.message);
     }
   });
 
+/**
+ * Send welcome email when new user registers
+ */
+async function sendWelcomeEmail(userEmail, firstName, lastName) {
+  const subject = "Welcome to GIGL Marketplace!";
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); padding: 20px; text-align: center;">
+        <h1 style="color: white; margin: 0; font-size: 28px;">Welcome to GIGL!</h1>
+        <p style="color: #e8f5e8; margin: 10px 0 0 0; font-size: 14px;">Green Investment in Greater Lincolnshire</p>
+      </div>
+      
+      <div style="padding: 30px; background: #f9f9f9;">
+        <h2 style="color: #333; margin-top: 0;">Hello ${firstName} ${lastName}!</h2>
+        
+        <p style="font-size: 16px; line-height: 1.6; color: #555;">
+          Thank you for joining the GIGL Marketplace - Greater Lincolnshire's premier platform for Biodiversity Net Gain trading.
+        </p>
+        
+        <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #4CAF50;">
+          <h3 style="color: #4CAF50; margin-top: 0;">What's Next?</h3>
+          <ul style="color: #555; line-height: 1.6;">
+            <li>Browse available BNG opportunities on your dashboard</li>
+            <li>Submit competitive bids for habitat creation and enhancement</li>
+            <li>Track your bid status and receive instant notifications</li>
+            <li>Connect with local landowners and conservation projects</li>
+          </ul>
+        </div>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="https://gigl-marketplace-v3.web.app/dashboard" 
+             style="background-color: #4CAF50; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+            Access Your Dashboard
+          </a>
+        </div>
+        
+        <p style="font-size: 14px; color: #777; border-top: 1px solid #eee; padding-top: 20px; margin-top: 30px;">
+          <strong>Need Help?</strong><br>
+          Contact our support team at <a href="mailto:david@baxterenvironmental.co.uk" style="color: #4CAF50;">david@baxterenvironmental.co.uk</a>
+        </p>
+      </div>
+      
+      <div style="background: #333; padding: 20px; text-align: center; color: #ccc; font-size: 12px;">
+        <p style="margin: 0;">GIGL Marketplace - Connecting Conservation with Commerce</p>
+        <p style="margin: 5px 0 0 0;">Building a sustainable future for Greater Lincolnshire's biodiversity</p>
+      </div>
+    </div>
+  `;
+
+  return await sendBrevoEmail(userEmail, subject, htmlContent, "welcome");
+}
+
 module.exports = {
-  sendBrevoEmail,
   sendNotificationEmail,
+  sendWelcomeEmail,
+  sendBrevoEmail,
 };

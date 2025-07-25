@@ -1,4 +1,4 @@
-// src/App.js - Updated with EmailVerificationHandler route
+// src/App.js - Corrected SyntaxError (Re-attempt)
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
@@ -10,6 +10,7 @@ import Login from './components/Login';
 import Register from './components/Register';
 import Dashboard from './components/Dashboard';
 import AdminPanel from './components/AdminPanel';
+import ProfilePanel from './components/ProfilePanel'; // Import the new component
 import Header from './components/Header';
 import Footer from './components/Footer';
 import EmailVerification from './components/EmailVerification';
@@ -54,6 +55,11 @@ function AppRoutes() {
           <Route path="/dashboard" element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/profile" element={
+            <ProtectedRoute>
+              <ProfilePanel /> {/* This line was causing the issue, the extra '>' has been removed */}
             </ProtectedRoute>
           } />
           <Route path="/admin" element={

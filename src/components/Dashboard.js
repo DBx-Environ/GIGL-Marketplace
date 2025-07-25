@@ -1,83 +1,27 @@
-// src/components/Dashboard.js - FIXED WITHDRAWN BID HANDLING
+// src/components/Dashboard.js - Final Syntax & Scope Fix
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext'; // Corrected import statement
 import { Edit, Plus, Filter, X } from 'lucide-react';
 import './Dashboard.css';
 import BidModal from './BidModal';
-
-// Filter options from lookup data
-const LPA_OPTIONS = [
-  "North Lincolnshire", "North East Lincolnshire", "West Lindsey", "East Lindsey",
-  "City of Lincoln", "North Kesteven", "South Kesteven", "New Holland", 
-  "Boston", "Outside Greater Lincs"
-];
-
-const NCA_OPTIONS = [
-  "Humberhead Levels", "Humber Estuary", "Lincolnshire Coast and Marshes",
-  "Lincolnshire Wolds", "Central Lincolnshire Vale", 
-  "Northern Lincolnshire Edge with Coversands", "The Fens",
-  "Southern Lincolnshire Edge", "Trent and Belvoir Vales", "Kesteven Uplands"
-];
+// Import helper functions and options from the new utility file
+import { 
+  formatDate, 
+  formatDateTime, 
+  getBidStatus, 
+  getLatestBidsPerOpportunity, 
+  isOpportunityClosingSoon,
+  isOpportunityActiveAndOpen,
+  formatHabitatRequirementsCondensed,
+  LPA_OPTIONS, 
+  NCA_OPTIONS  
+} from '../utils/bidHelpers';
 
 const BID_STATUS_OPTIONS = [
-  "Active", "Overall Winner", "Won 1 Habitat", "Won", "Not Selected", "Withdrawn"
+  "Active", "Overall Winner", "Won 1 Habitat", "Won", "Not Selected", "Withdrawn", "Expired" 
 ];
-
-// Helper function to safely format dates
-const formatDate = (dateValue) => {
-  if (!dateValue) return 'Invalid date';
-  
-  let date;
-  if (typeof dateValue === 'string') {
-    date = new Date(dateValue);
-  } else if (dateValue.toDate && typeof dateValue.toDate === 'function') {
-    date = dateValue.toDate();
-  } else if (dateValue instanceof Date) {
-    date = dateValue;
-  } else {
-    return 'Invalid date';
-  }
-  
-  if (isNaN(date.getTime())) {
-    return 'Invalid date';
-  }
-  
-  return date.toLocaleDateString('en-GB', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  });
-};
-
-// Helper function to format date and time
-const formatDateTime = (dateValue) => {
-  if (!dateValue) return 'Invalid date';
-  
-  let date;
-  if (typeof dateValue === 'string') {
-    date = new Date(dateValue);
-  } else if (dateValue.toDate && typeof dateValue.toDate === 'function') {
-    date = dateValue.toDate();
-  } else if (dateValue instanceof Date) {
-    date = dateValue;
-  } else {
-    return 'Invalid date';
-  }
-  
-  if (isNaN(date.getTime())) {
-    return 'Invalid date';
-  }
-  
-  return date.toLocaleDateString('en-GB', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-};
 
 function Dashboard() {
   const { currentUser, userData } = useAuth();
@@ -98,62 +42,6 @@ function Dashboard() {
   const [bidFilters, setBidFilters] = useState({
     status: ''
   });
-
-  // FIXED: Get latest bids per opportunity - properly handles withdrawn bids
-  const getLatestBidsPerOpportunity = (bids) => {
-    // Group bids by opportunity
-    const bidsByOpportunity = {};
-    
-    bids.forEach(bid => {
-      if (!bidsByOpportunity[bid.opportunityId]) {
-        bidsByOpportunity[bid.opportunityId] = [];
-      }
-      bidsByOpportunity[bid.opportunityId].push(bid);
-    });
-
-    // Get the latest ACTIVE bid for each opportunity, plus withdrawn bids for history
-    const latestBids = [];
-    Object.keys(bidsByOpportunity).forEach(opportunityId => {
-      const opportunityBids = bidsByOpportunity[opportunityId];
-      
-      // Separate active and withdrawn bids
-      const activeBids = opportunityBids.filter(bid => bid.status !== 'withdrawn');
-      const withdrawnBids = opportunityBids.filter(bid => bid.status === 'withdrawn');
-      
-      // Get the latest active bid (if any)
-      if (activeBids.length > 0) {
-        const sortedActiveBids = activeBids.sort((a, b) => {
-          const aTime = a.updatedAt || a.createdAt;
-          const bTime = b.updatedAt || b.createdAt;
-          
-          // Handle Firestore timestamps
-          const aDate = aTime?.toDate ? aTime.toDate() : new Date(aTime);
-          const bDate = bTime?.toDate ? bTime.toDate() : new Date(bTime);
-          
-          return bDate - aDate;
-        });
-        
-        latestBids.push(sortedActiveBids[0]); // Latest active bid
-      }
-      
-      // Add the most recent withdrawn bid for historical reference (if any and no active bid)
-      if (withdrawnBids.length > 0 && activeBids.length === 0) {
-        const sortedWithdrawnBids = withdrawnBids.sort((a, b) => {
-          const aTime = a.updatedAt || a.createdAt;
-          const bTime = b.updatedAt || b.createdAt;
-          
-          const aDate = aTime?.toDate ? aTime.toDate() : new Date(aTime);
-          const bDate = bTime?.toDate ? bTime.toDate() : new Date(bTime);
-          
-          return bDate - aDate;
-        });
-        
-        latestBids.push(sortedWithdrawnBids[0]); // Most recent withdrawn bid (for history)
-      }
-    });
-
-    return latestBids;
-  };
 
   useEffect(() => {
     if (!currentUser) return;
@@ -196,7 +84,7 @@ function Dashboard() {
 
   // Handle new bids from opportunities table
   const handlePlaceBid = (opportunity) => {
-    // FIXED: Check if user has any ACTIVE (non-withdrawn) bid on this opportunity
+    // Check if user has any ACTIVE (non-withdrawn) bid on this opportunity
     const existingActiveBid = userBids.find(bid => 
       bid.opportunityId === opportunity.id && bid.status !== 'withdrawn'
     );
@@ -251,118 +139,11 @@ function Dashboard() {
     setShowBidModal(true);
   };
 
-  const getBidStatus = (bid) => {
-    // FIRST: Check if bid is withdrawn (highest priority check)
-    if (bid.status === 'withdrawn') {
-      return 'Withdrawn';
-    }
-    
-    // Check for any winning status
-    console.log('Dashboard getBidStatus for bid:', bid.id, {
-      isWinning: bid.isWinning,
-      winningType: bid.winningType,
-      habitatWins: bid.habitatWins
-    });
-    
-    // Check for overall winner
-    if (bid.isWinning && bid.winningType === 'overall') {
-      return 'Overall Winner';
-    }
-    
-    // Check for legacy winning (old bids)
-    if (bid.isWinning && !bid.winningType) {
-      return 'Won';
-    }
-    
-    // Check for habitat-specific wins
-    if (bid.habitatWins && Object.keys(bid.habitatWins).length > 0) {
-      const winCount = Object.values(bid.habitatWins).filter(hw => hw.isWinner).length;
-      if (winCount > 0) {
-        return winCount === 1 ? 'Won 1 Habitat' : `Won ${winCount} Habitats`;
-      }
-    }
-    
-    // Find the opportunity to check if it's closed
-    const opportunity = bidOpportunities.find(opp => opp.id === bid.opportunityId);
-    if (!opportunity) return 'Unknown';
-    
-    const now = new Date();
-    let closingDate;
-    
-    // Handle different date formats
-    if (typeof opportunity.closingDate === 'string') {
-      closingDate = new Date(opportunity.closingDate);
-    } else if (opportunity.closingDate.toDate && typeof opportunity.closingDate.toDate === 'function') {
-      closingDate = opportunity.closingDate.toDate();
-    } else {
-      closingDate = new Date(opportunity.closingDate);
-    }
-    
-    // Check status
-    if (opportunity.status === 'closed') {
-      return 'Not Selected';
-    }
-    
-    if (now > closingDate) {
-      return 'Expired';
-    }
-    
-    return 'Active';
-  };
-
-  const isOpportunityClosingSoon = (closingDate) => {
-    const now = new Date();
-    let closing;
-    
-    if (typeof closingDate === 'string') {
-      closing = new Date(closingDate);
-    } else if (closingDate.toDate && typeof closingDate.toDate === 'function') {
-      closing = closingDate.toDate();
-    } else {
-      return false;
-    }
-    
-    if (isNaN(closing.getTime())) return false;
-    
-    const timeDiff = closing - now;
-    const daysDiff = timeDiff / (1000 * 60 * 60 * 24);
-    return daysDiff <= 2 && daysDiff > 0;
-  };
-
   // FIXED: Check for ACTIVE (non-withdrawn) bids only
   const hasUserBidOnOpportunity = (opportunityId) => {
     return userBids.some(bid => 
       bid.opportunityId === opportunityId && bid.status !== 'withdrawn'
     );
-  };
-
-  // Helper function to check if opportunity is active and open for bidding
-  const isOpportunityActiveAndOpen = (opportunity) => {
-    if (opportunity.status !== 'active') return false;
-    
-    const now = new Date();
-    let closingDate;
-    
-    if (typeof opportunity.closingDate === 'string') {
-      closingDate = new Date(opportunity.closingDate);
-    } else if (opportunity.closingDate.toDate && typeof opportunity.closingDate.toDate === 'function') {
-      closingDate = opportunity.closingDate.toDate();
-    } else {
-      return false;
-    }
-    
-    return now <= closingDate;
-  };
-
-  // Helper function to format habitat requirements concisely
-  const formatHabitatRequirementsCondensed = (habitatRequirements) => {
-    if (!habitatRequirements || !Array.isArray(habitatRequirements) || habitatRequirements.length === 0) {
-      return 'No requirements specified';
-    }
-    
-    return habitatRequirements.map((req, index) => 
-      `${req.specificHabitat}: ${req.unitsRequired} units`
-    ).join(' • ');
   };
 
   // Filter functions
@@ -390,7 +171,7 @@ function Dashboard() {
   };
 
   const getFilteredBids = () => {
-    // FIXED: Use the corrected function that properly handles withdrawn bids
+    // Use the corrected function that properly handles withdrawn bids
     const latestBids = getLatestBidsPerOpportunity(userBids);
     
     let filtered = latestBids;
@@ -398,7 +179,7 @@ function Dashboard() {
     // Apply status filter
     if (bidFilters.status) {
       filtered = filtered.filter(bid => {
-        const status = getBidStatus(bid);
+        const status = getBidStatus(bid, bidOpportunities); // Pass opportunitiesData
         // Handle different status variations
         if (bidFilters.status === 'Won' && (status === 'Won' || status === 'Overall Winner' || status.includes('Won'))) {
           return true;
@@ -411,8 +192,8 @@ function Dashboard() {
     return filtered.sort((a, b) => {
       const oppA = bidOpportunities.find(opp => opp.id === a.opportunityId);
       const oppB = bidOpportunities.find(opp => opp.id === b.opportunityId);
-      const statusA = getBidStatus(a);
-      const statusB = getBidStatus(b);
+      const statusA = getBidStatus(a, bidOpportunities); // Pass opportunitiesData
+      const statusB = getBidStatus(b, bidOpportunities); // Pass opportunitiesData
       
       const getPriority = (bid, opportunity, status) => {
         // 1. Active bids (HIGHEST PRIORITY - numbers 0-999)
@@ -592,8 +373,13 @@ function Dashboard() {
               <div>
                 {getFilteredBids().map((bid) => {
                   const opportunity = bidOpportunities.find(opp => opp.id === bid.opportunityId);
-                  const status = getBidStatus(bid);
+                  const status = getBidStatus(bid, bidOpportunities); // Pass opportunitiesData
                   
+                  // Determine the correct date to display based on opportunity status
+                  const displayDate = opportunity?.status === 'closed' && opportunity?.closedAt
+                    ? opportunity.closedAt
+                    : opportunity?.closingDate;
+
                   return (
                     <div 
                       key={bid.id} 
@@ -602,7 +388,7 @@ function Dashboard() {
                     >
                       <div className="bid-card-header">
                         <div style={{ flex: 1 }}>
-                          <h3 className="bid-title" style={{ fontSize: '15px', marginBottom: '4px' }}>
+                          <h3 style={{ fontWeight: '600', color: '#111827', marginBottom: '4px', fontSize: '15px' }}>
                             {opportunity?.title || 'Unknown Opportunity'}
                           </h3>
                           <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '4px' }}>
@@ -659,18 +445,18 @@ function Dashboard() {
                       )}
                       
                       <div className="bid-card-footer">
-                        <div className="bid-date" style={{ fontSize: '12px', flex: 1 }}>
+                        <div style={{ fontSize: '12px', flex: 1 }}>
                           <span>
                             Placed: {formatDate(bid.createdAt)}
                             {bid.updatedAt && bid.updatedAt !== bid.createdAt && (
                               <span> • Updated: {formatDate(bid.updatedAt)}</span>
                             )}
-                            {opportunity && (
-                              <span> • Closes: {formatDate(opportunity.closingDate)}</span>
-                            )}
+                            {opportunity && /* Corrected: Removed the extra outer parentheses around the span */
+                              <span> • Closure Date: {formatDate(displayDate)}</span> /* Updated label and date source */
+                            }
                           </span>
                         </div>
-                        <div className="bid-actions">
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                           {status === 'Active' && (
                             <button
                               onClick={() => handleEditBid(bid)}
@@ -843,6 +629,11 @@ function Dashboard() {
                     const hasUserBid = hasUserBidOnOpportunity(opportunity.id);
                     const isClosingSoon = isOpportunityClosingSoon(opportunity.closingDate);
                     
+                    // Determine the correct date to display based on opportunity status
+                    const displayDate = opportunity.status === 'closed' && opportunity.closedAt
+                      ? opportunity.closedAt
+                      : opportunity.closingDate;
+
                     return (
                       <div key={opportunity.id} style={{ 
                         border: isClosingSoon ? '2px solid #f59e0b' : '1px solid #e5e7eb', 
@@ -855,7 +646,7 @@ function Dashboard() {
                             <h3 style={{ fontWeight: '600', color: '#111827', marginBottom: '4px', fontSize: '15px' }}>
                               {opportunity.title}
                             </h3>
-                            <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>
+                            <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '4px' }}>
                               <span style={{ marginRight: '16px' }}><strong>LPA:</strong> {opportunity.lpa}</span>
                               <span><strong>NCA:</strong> {opportunity.nca}</span>
                             </div>
@@ -903,42 +694,12 @@ function Dashboard() {
                         
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div style={{ fontSize: '13px', color: '#6b7280' }}>
-                            <strong>Closes:</strong> {formatDateTime(opportunity.closingDate)}
+                            <strong>Closure Date:</strong> {formatDateTime(opportunity.status === 'closed' && opportunity.closedAt ? opportunity.closedAt : opportunity.closingDate)} {/* Updated label and logic */}
                           </div>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            {!hasUserBid && (
-                              <button
-                                onClick={() => handlePlaceBid(opportunity)}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  padding: '6px 12px',
-                                  fontSize: '13px',
-                                  fontWeight: '500',
-                                  borderRadius: '6px',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  backgroundColor: isClosingSoon ? '#f59e0b' : '#2563eb',
-                                  color: 'white',
-                                  transition: 'all 0.2s ease'
-                                }}
-                              >
-                                <Plus size={14} />
-                                <span>Place Bid</span>
-                              </button>
-                            )}
-                            
-                            {hasUserBid && (
-                              <div style={{ 
-                                fontSize: '12px', 
-                                color: '#059669',
-                                fontStyle: 'italic',
-                                textAlign: 'right'
-                              }}>
-                                Use "Edit" from Bids to update
-                              </div>
-                            )}
+                            {opportunity && /* Corrected: Removed the extra outer parentheses around the span */
+                              <span> • Closure Date: {formatDate(displayDate)}</span> /* Updated label and date source */
+                            }
                           </div>
                         </div>
                       </div>

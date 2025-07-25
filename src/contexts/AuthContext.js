@@ -1,4 +1,4 @@
-// src/contexts/AuthContext.js - UPDATED with custom verification URL
+// src/contexts/AuthContext.js - UPDATED with custom verification URL and updateUserData function
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { auth, db } from '../firebase/config';
 import { 
@@ -65,7 +65,7 @@ export function AuthProvider({ children }) {
         displayName: `${firstName} ${lastName}`
       });
 
-      // Create user document in Firestore
+      // Create user document in Firestore with new default fields
       const userData = {
         email: user.email,
         firstName,
@@ -73,6 +73,9 @@ export function AuthProvider({ children }) {
         displayName: `${firstName} ${lastName}`,
         emailVerified: false,
         isAdmin: false,
+        HomeLPA: 'Lincoln City', // Default value for HomeLPA
+        HomeNCA: 'Lincolnshire Wolds', // Default value for HomeNCA
+        SBI: '12345689', // Default value for SBI
         createdAt: serverTimestamp(),
         registrationDate: serverTimestamp()
       };
@@ -131,6 +134,11 @@ export function AuthProvider({ children }) {
       throw error;
     }
   }
+
+  // Function to manually update user data in context (useful after profile edits)
+  const updateUserData = (newData) => {
+    setUserData(newData);
+  };
 
   useEffect(() => {
     console.log('AuthContext useEffect starting...');
@@ -201,7 +209,8 @@ export function AuthProvider({ children }) {
     register,
     login,
     logout,
-    loading
+    loading,
+    updateUserData // Expose the new function
   };
 
   console.log('AuthContext providing values:', {

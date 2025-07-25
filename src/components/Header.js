@@ -1,9 +1,9 @@
-// Debug Header.js - Add console logs to identify the issue
+// src/components/Header.js - Updated with Profile link
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-toastify';
-import { LogOut } from 'lucide-react';
+import { LogOut, User } from 'lucide-react'; // Import User icon
 
 function Header() {
   const { currentUser, userData, logout } = useAuth();
@@ -56,6 +56,12 @@ function Header() {
                 className={`nav-link ${isActive('/dashboard') ? 'active' : ''}`}
               >
                 Dashboard
+              </Link>
+              <Link // Add the new Profile link
+                to="/profile"
+                className={`nav-link ${isActive('/profile') ? 'active' : ''}`}
+              >
+                Profile
               </Link>
               {userData?.isAdmin && (
                 <Link

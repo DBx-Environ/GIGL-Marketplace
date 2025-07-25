@@ -1,335 +1,226 @@
-// functions/modules/reminderFunctions.js - REMINDER SYSTEM WITH JSDOC
+// functions/modules/reminderFunctions.js
 const admin = require("firebase-admin");
 const functions = require("firebase-functions");
 const {sendBrevoEmail} = require("./emailFunctions");
 
 /**
- * Scheduled function to send daily reminders about closing opportunities
- * Runs daily at 9:00 AM UK time
+ * Scheduled function to send daily reminder emails
+ * Runs daily at 9 AM GMT to remind users about opportunities closing within 24 hours
  */
 const sendBidReminders = functions
   .region("europe-west2")
-  .pubsub.schedule("0 9 * * *")
+  .pubsub
+  .schedule("0 9 * * *") // Daily at 9 AM
   .timeZone("Europe/London")
   .onRun(async (context) => {
     try {
-      console.log("📬 REMINDERS: Starting daily reminder check");
+      console.log("Starting daily reminder check");
 
-      const now = new Date();
-      const tomorrow = new Date(now);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(23, 59, 59, 999); // End of tomorrow
+      const now = admin.firestore.Timestamp.now();
+      const twentyFourHoursFromNow = admin.firestore.Timestamp.fromDate(
+        new Date(Date.now() + 24 * 60 * 60 * 1000)
+      );
 
-      console.log(`📬 REMINDERS: Current time: ${now.toISOString()}`);
-      console.log(`📬 REMINDERS: Looking for opportunities closing before: ${tomorrow.toISOString()}`);
-
-      // Get all active opportunities closing within 24 hours
-      const snapshot = await admin.firestore()
+      // Find opportunities closing within 24 hours
+      const closingSoonSnapshot = await admin.firestore()
         .collection("bidOpportunities")
         .where("status", "==", "active")
-        .where("closingDate", "<=", tomorrow)
-        .where("closingDate", ">", now)
+        .where("closingDate", ">=", now)
+        .where("closingDate", "<=", twentyFourHoursFromNow)
         .get();
 
-      if (snapshot.empty) {
-        console.log("📬 REMINDERS: No opportunities closing soon found");
+      if (closingSoonSnapshot.empty) {
+        console.log("No opportunities closing within 24 hours");
         return null;
       }
 
-      console.log(`📬 REMINDERS: Found ${snapshot.size} opportunities closing soon`);
+      console.log(`Found ${closingSoonSnapshot.size} opportunities closing within 24 hours`);
 
-      const reminderPromises = [];
+      // Process each opportunity
+      const reminderPromises = closingSoonSnapshot.docs.map(async (opportunityDoc) => {
+        try {
+          const opportunityData = opportunityDoc.data();
+          const opportunityId = opportunityDoc.id;
 
-      snapshot.forEach((doc) => {
-        const opportunity = doc.data();
-        const opportunityId = doc.id;
+          console.log(`Processing reminders for: ${opportunityData.title}`);
 
-        console.log(`📬 REMINDERS: Processing ${opportunityId}: "${opportunity.title}"`);
-        reminderPromises.push(sendOpportunityReminders(opportunityId, opportunity));
-      });
+          // Get all users who have bid on this opportunity
+          const bidsSnapshot = await admin.firestore()
+            .collection("bids")
+            .where("opportunityId", "==", opportunityId)
+            .where("status", "!=", "withdrawn")
+            .get();
 
-      const results = await Promise.allSettled(reminderPromises);
+          // Get unique user IDs who have bid
+          const bidderUserIds = [...new Set(bidsSnapshot.docs.map((doc) => doc.data().userId))];
 
-      // Log results
-      let successCount = 0;
-      let errorCount = 0;
+          // Get all active users (to send "last chance" emails to those who haven't bid)
+          const allUsersSnapshot = await admin.firestore()
+            .collection("users")
+            .where("emailVerified", "==", true)
+            .get();
 
-      results.forEach((result, index) => {
-        if (result.status === "fulfilled") {
-          successCount++;
-          console.log(`✅ REMINDERS: Successfully sent reminders for opportunity ${index + 1}`);
-        } else {
-          errorCount++;
-          console.error(`❌ REMINDERS: Failed to send reminders for opportunity ${index + 1}:`, result.reason);
+          const allUserIds = allUsersSnapshot.docs.map((doc) => doc.id);
+          const nonBidderUserIds = allUserIds.filter((userId) => !bidderUserIds.includes(userId));
+
+          // Send reminder emails to bidders
+          const bidderReminders = bidderUserIds.map(async (userId) => {
+            try {
+              const userDoc = await admin.firestore().collection("users").doc(userId).get();
+              if (userDoc.exists) {
+                return await sendReminderEmail(userDoc.data(), opportunityData, true);
+              }
+            } catch (error) {
+              console.error(`Error sending bidder reminder to ${userId}:`, error);
+              return {success: false, userId, error: error.message};
+            }
+          });
+
+          // Send "last chance" emails to non-bidders (limit to prevent spam)
+          const lastChanceReminders = nonBidderUserIds.slice(0, 50).map(async (userId) => {
+            try {
+              const userDoc = await admin.firestore().collection("users").doc(userId).get();
+              if (userDoc.exists) {
+                return await sendReminderEmail(userDoc.data(), opportunityData, false);
+              }
+            } catch (error) {
+              console.error(`Error sending last chance reminder to ${userId}:`, error);
+              return {success: false, userId, error: error.message};
+            }
+          });
+
+          const results = await Promise.all([...bidderReminders, ...lastChanceReminders]);
+          const successful = results.filter((r) => r && r.success).length;
+          const failed = results.filter((r) => r && !r.success).length;
+
+          console.log(`Opportunity ${opportunityId}: ${successful} successful, ${failed} failed reminders`);
+
+          return {
+            opportunityId,
+            title: opportunityData.title,
+            successful,
+            failed,
+            totalSent: successful + failed,
+          };
+        } catch (error) {
+          console.error(`Error processing reminders for opportunity ${opportunityDoc.id}:`, error);
+          return {
+            opportunityId: opportunityDoc.id,
+            error: error.message,
+            successful: 0,
+            failed: 1,
+          };
         }
       });
 
-      console.log(`📬 REMINDERS: Completed - ${successCount} successful, ${errorCount} failed`);
-      return null;
+      const results = await Promise.all(reminderPromises);
+      const totalSuccessful = results.reduce((sum, r) => sum + (r.successful || 0), 0);
+      const totalFailed = results.reduce((sum, r) => sum + (r.failed || 0), 0);
+
+      console.log(`Reminder summary: ${totalSuccessful} successful, ${totalFailed} failed`);
+
+      return {
+        processed: results.length,
+        totalSuccessful,
+        totalFailed,
+        results,
+      };
     } catch (error) {
-      console.error("❌ REMINDERS: Error in sendBidReminders:", error);
+      console.error("Error in sendBidReminders:", error);
       return null;
     }
   });
 
 /**
- * Send reminder emails for a specific opportunity
- * @param {string} opportunityId - The ID of the opportunity
- * @param {Object} opportunityData - The opportunity document data
- * @return {Promise<void>}
+ * Send individual reminder email
  */
-async function sendOpportunityReminders(opportunityId, opportunityData) {
+async function sendReminderEmail(userData, opportunityData, hasBid) {
   try {
-    // Get all registered users
-    const usersSnapshot = await admin.firestore()
-      .collection("users")
-      .get();
+    const subject = hasBid ?
+      `Reminder: Your Bid Closes Soon! - ${opportunityData.title}` :
+      `Last Chance: ${opportunityData.title} - Closes Soon!`;
 
-    if (usersSnapshot.empty) {
-      console.log(`📬 No users found for reminders`);
-      return;
-    }
-
-    // Get all bids for this opportunity to see who has already bid
-    const bidsSnapshot = await admin.firestore()
-      .collection("bids")
-      .where("opportunityId", "==", opportunityId)
-      .where("status", "!=", "withdrawn")
-      .get();
-
-    const bidderIds = new Set();
-    bidsSnapshot.forEach((bidDoc) => {
-      bidderIds.add(bidDoc.data().userId);
-    });
-
-    console.log(`📬 Found ${bidderIds.size} existing bidders for ${opportunityId}`);
-
-    // Format closing date
-    let closingDate;
-    if (opportunityData.closingDate?.toDate) {
-      closingDate = opportunityData.closingDate.toDate();
-    } else if (opportunityData.closingDate instanceof Date) {
-      closingDate = opportunityData.closingDate;
-    } else if (typeof opportunityData.closingDate === "string") {
-      closingDate = new Date(opportunityData.closingDate);
-    } else {
-      closingDate = new Date();
-    }
-
-    const formatDate = (date) => {
-      return new Intl.DateTimeFormat("en-GB", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone: "Europe/London",
-      }).format(date);
-    };
-
-    const formattedClosingDate = formatDate(closingDate);
-
-    // Calculate time remaining
-    const timeRemaining = closingDate - new Date();
-    const hoursRemaining = Math.floor(timeRemaining / (1000 * 60 * 60));
-
-    let urgencyMessage = "";
-    if (hoursRemaining <= 6) {
-      urgencyMessage = "⚠️ URGENT: Less than 6 hours remaining!";
-    } else if (hoursRemaining <= 12) {
-      urgencyMessage = "⏰ REMINDER: Less than 12 hours remaining!";
-    } else {
-      urgencyMessage = "📅 REMINDER: Closing soon!";
-    }
-
-    // Send reminders to all users
-    const reminderPromises = [];
-
-    usersSnapshot.forEach((userDoc) => {
-      const userId = userDoc.id;
-      const userData = userDoc.data();
-
-      if (!userData.email) {
-        console.log(`📬 Skipping user ${userId} - no email address`);
-        return;
-      }
-
-      const hasBid = bidderIds.has(userId);
-      reminderPromises.push(sendUserReminder(userData, opportunityData, hasBid, formattedClosingDate, urgencyMessage, hoursRemaining));
-    });
-
-    const reminderResults = await Promise.allSettled(reminderPromises);
-
-    const sentCount = reminderResults.filter((result) => result.status === "fulfilled").length;
-    const failedCount = reminderResults.filter((result) => result.status === "rejected").length;
-
-    console.log(`📬 Sent ${sentCount} reminders, ${failedCount} failed for opportunity ${opportunityId}`);
-
-    // Send admin summary
-    await sendAdminReminderSummary(opportunityData, sentCount, failedCount, bidderIds.size, usersSnapshot.size);
-  } catch (error) {
-    console.error(`❌ Error sending reminders for opportunity ${opportunityId}:`, error);
-    throw error;
-  }
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, ${hasBid ? "#ff9800" : "#f44336"} 0%, ${hasBid ? "#f57c00" : "#d32f2f"} 100%); padding: 20px; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 28px;">${hasBid ? "⏰ Bid Reminder" : "🚨 Last Chance!"}</h1>
+          <p style="color: ${hasBid ? "#fff3e0" : "#ffebee"}; margin: 10px 0 0 0; font-size: 14px;">GIGL Marketplace</p>
+        </div>
+        
+        <div style="padding: 30px; background: #f9f9f9;">
+          <h2 style="color: #333; margin-top: 0;">${hasBid ?
+    `Your Bid Closes Soon!` :
+    `Last Chance to Bid!`}</h2>
+          
+          <p>Dear ${userData.firstName} ${userData.lastName},</p>
+          
+          <p>${hasBid ?
+    "This is a reminder that an opportunity you've bid on will close within 24 hours:" :
+    "Don't miss this opportunity! The following bid opportunity closes within 24 hours:"
+}</p>
+          
+          <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${hasBid ? "#ff9800" : "#f44336"};">
+            <h3 style="color: ${hasBid ? "#ff9800" : "#f44336"}; margin-top: 0;">Opportunity Details</h3>
+            <p><strong>Title:</strong> ${opportunityData.title}</p>
+            <p><strong>LPA:</strong> ${opportunityData.lpa || "Not specified"}</p>
+            <p><strong>NCA:</strong> ${opportunityData.nca || "Not specified"}</p>
+            <p><strong>Location:</strong> ${opportunityData.location || "Not specified"}</p>
+            <p><strong>Closes:</strong> ${opportunityData.closingDate.toDate().toLocaleString("en-GB")}</p>
+            
+            ${opportunityData.habitatRequirements ? `
+              <div style="margin-top: 15px;">
+                <strong>Habitat Requirements:</strong>
+                <ul style="margin: 5px 0; padding-left: 20px;">
+                  ${opportunityData.habitatRequirements.map((req) => `
+                    <li style="margin: 3px 0;">${req.specificHabitat}: ${req.unitsRequired} units</li>
+                  `).join("")}
+                </ul>
+              </div>
+            ` : ""}
+          </div>
+          
+          <div style="background: ${hasBid ? "#fff3cd" : "#f8d7da"}; padding: 15px; border-radius: 8px; border-left: 4px solid ${hasBid ? "#ffc107" : "#dc3545"}; margin: 20px 0;">
+            <p style="margin: 0; color: ${hasBid ? "#856404" : "#721c24"}; font-size: 14px;">
+              <strong>${hasBid ? "Action Available:" : "Action Required:"}</strong><br>
+              ${hasBid ?
+    "• You can still update your bid before the closing time<br>• Review competing bids and adjust your strategy<br>• Ensure your bid covers all required habitat types" :
+    "• This is your last chance to submit a bid for this opportunity<br>• Review the habitat requirements carefully<br>• Submit competitive pricing to maximize your chances"
 }
-
-/**
- * Send reminder email to a specific user
- * @param {Object} userData - The user document data
- * @param {Object} opportunityData - The opportunity document data
- * @param {boolean} hasBid - Whether the user has already bid
- * @param {string} formattedClosingDate - Formatted closing date string
- * @param {string} urgencyMessage - Urgency message based on time remaining
- * @param {number} hoursRemaining - Hours remaining until closure
- * @return {Promise<void>}
- */
-async function sendUserReminder(userData, opportunityData, hasBid, formattedClosingDate, urgencyMessage, hoursRemaining) {
-  try {
-    let subject; let message;
-
-    if (hasBid) {
-      // User has already bid - reminder to update if needed
-      subject = `${urgencyMessage} Update Your Bid - ${opportunityData.title}`;
-      message = `
-        <h2>${urgencyMessage}</h2>
-        <p>This is a reminder that the opportunity "${opportunityData.title}" is closing soon.</p>
+            </p>
+          </div>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="https://gigl-marketplace-v3.web.app/dashboard" 
+               style="background-color: ${hasBid ? "#ff9800" : "#f44336"}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+              ${hasBid ? "Update Your Bid" : "Place Your Bid Now"}
+            </a>
+          </div>
+          
+          <p style="font-size: 14px; color: #777; border-top: 1px solid #eee; padding-top: 20px; margin-top: 30px;">
+            <strong>Questions?</strong><br>
+            Contact us at <a href="mailto:david@baxterenvironmental.co.uk" style="color: #4CAF50;">david@baxterenvironmental.co.uk</a>
+          </p>
+        </div>
         
-        <h3>⏰ Time Remaining: ${hoursRemaining} hours</h3>
-        <p><strong>Closes:</strong> ${formattedClosingDate}</p>
-        
-        <h3>Your Status:</h3>
-        <p>✅ You have already submitted a bid for this opportunity.</p>
-        <p>You can still update your bid before the closing time if needed.</p>
-        
-        <h3>Opportunity Details:</h3>
-        <ul>
-          <li><strong>Title:</strong> ${opportunityData.title}</li>
-          <li><strong>Location:</strong> ${opportunityData.location}</li>
-          <li><strong>Description:</strong> ${opportunityData.description}</li>
-        </ul>
-        
-        <p><a href="${process.env.FRONTEND_URL || "https://gigl-marketplace-v3.web.app"}" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Review Your Bid</a></p>
-      `;
-    } else {
-      // User hasn't bid yet - encourage to bid
-      subject = `${urgencyMessage} Last Chance to Bid - ${opportunityData.title}`;
-      message = `
-        <h2>${urgencyMessage}</h2>
-        <p>Don't miss out! The opportunity "${opportunityData.title}" is closing soon and you haven't submitted a bid yet.</p>
-        
-        <h3>⏰ Time Remaining: ${hoursRemaining} hours</h3>
-        <p><strong>Closes:</strong> ${formattedClosingDate}</p>
-        
-        <h3>Opportunity Details:</h3>
-        <ul>
-          <li><strong>Title:</strong> ${opportunityData.title}</li>
-          <li><strong>Location:</strong> ${opportunityData.location}</li>
-          <li><strong>Description:</strong> ${opportunityData.description}</li>
-        </ul>
-        
-        <h3>Why Bid?</h3>
-        <ul>
-          <li>Secure valuable environmental contracts</li>
-          <li>Contribute to biodiversity net gain</li>
-          <li>Grow your environmental consultancy business</li>
-        </ul>
-        
-        <p><a href="${process.env.FRONTEND_URL || "https://gigl-marketplace-v3.web.app"}" style="background-color: #FF5722; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Submit Your Bid Now</a></p>
-        
-        <p><em>This is your last chance to bid on this opportunity!</em></p>
-      `;
-    }
-
-    await sendBrevoEmail({
-      to: userData.email,
-      subject: subject,
-      htmlContent: message,
-    });
-
-    console.log(`📬 Reminder sent to ${userData.email} (${hasBid ? "has bid" : "no bid yet"})`);
-  } catch (error) {
-    console.error(`❌ Error sending reminder to ${userData.email}:`, error);
-    throw error;
-  }
-}
-
-/**
- * Send admin summary of reminder sending
- * @param {Object} opportunityData - The opportunity document data
- * @param {number} sentCount - Number of reminders sent successfully
- * @param {number} failedCount - Number of reminders that failed
- * @param {number} bidderCount - Number of users who have already bid
- * @param {number} totalUsers - Total number of users
- * @return {Promise<void>}
- */
-async function sendAdminReminderSummary(opportunityData, sentCount, failedCount, bidderCount, totalUsers) {
-  try {
-    const subject = `Daily Reminders Sent - ${opportunityData.title}`;
-
-    // Format closing date
-    let closingDate;
-    if (opportunityData.closingDate?.toDate) {
-      closingDate = opportunityData.closingDate.toDate();
-    } else if (opportunityData.closingDate instanceof Date) {
-      closingDate = opportunityData.closingDate;
-    } else if (typeof opportunityData.closingDate === "string") {
-      closingDate = new Date(opportunityData.closingDate);
-    } else {
-      closingDate = new Date();
-    }
-
-    const formatDate = (date) => {
-      return new Intl.DateTimeFormat("en-GB", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone: "Europe/London",
-      }).format(date);
-    };
-
-    const timeRemaining = closingDate - new Date();
-    const hoursRemaining = Math.floor(timeRemaining / (1000 * 60 * 60));
-
-    const message = `
-      <h2>Daily Reminder Summary</h2>
-      <p>Reminders have been sent for the opportunity closing soon.</p>
-      
-      <h3>Opportunity Details:</h3>
-      <ul>
-        <li><strong>Title:</strong> ${opportunityData.title}</li>
-        <li><strong>Location:</strong> ${opportunityData.location}</li>
-        <li><strong>Closing:</strong> ${formatDate(closingDate)}</li>
-        <li><strong>Time Remaining:</strong> ${hoursRemaining} hours</li>
-      </ul>
-      
-      <h3>Reminder Statistics:</h3>
-      <ul>
-        <li><strong>Total Users:</strong> ${totalUsers}</li>
-        <li><strong>Users with Bids:</strong> ${bidderCount}</li>
-        <li><strong>Users without Bids:</strong> ${totalUsers - bidderCount}</li>
-        <li><strong>Reminders Sent:</strong> ${sentCount}</li>
-        <li><strong>Failed to Send:</strong> ${failedCount}</li>
-      </ul>
-      
-      <h3>Engagement Rate:</h3>
-      <p><strong>${((bidderCount / totalUsers) * 100).toFixed(1)}%</strong> of users have submitted bids.</p>
-      
-      ${hoursRemaining <= 6 ? "<p><strong>⚠️ URGENT: Less than 6 hours remaining until this opportunity closes!</strong></p>" : ""}
+        <div style="background: #333; padding: 20px; text-align: center; color: #ccc; font-size: 12px;">
+          <p style="margin: 0;">GIGL Marketplace - Biodiversity Net Gain Trading Platform</p>
+          <p style="margin: 5px 0 0 0;">This is an automated reminder. Time-sensitive opportunities require prompt action.</p>
+        </div>
+      </div>
     `;
 
-    await sendBrevoEmail({
-      to: "david@environ.uk.com",
-      subject: subject,
-      htmlContent: message,
-    });
+    const result = await sendBrevoEmail(userData.email, subject, htmlContent);
 
-    console.log(`📬 Admin reminder summary sent for ${opportunityData.title}`);
+    if (result.success) {
+      console.log(`✅ Reminder sent to ${userData.email} (${hasBid ? "existing bidder" : "new prospect"})`);
+      return {success: true, email: userData.email, type: hasBid ? "bidder" : "prospect"};
+    } else {
+      console.error(`❌ Failed to send reminder to ${userData.email}:`, result.error);
+      return {success: false, email: userData.email, error: result.error};
+    }
   } catch (error) {
-    console.error(`❌ Error sending admin reminder summary:`, error);
+    console.error(`Error sending reminder to ${userData.email}:`, error);
+    return {success: false, email: userData.email, error: error.message};
   }
 }
 

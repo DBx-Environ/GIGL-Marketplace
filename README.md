@@ -396,6 +396,17 @@
 
 # │   │   ├── AdminPanel.js
 
+# │   │   ├── Admin/
+
+# │   │   │   └── OpportunitiesTab.js
+
+# │   │   │   ├── AnalyticsTab.js
+
+# │   │   │   ├── SettingsTab.js
+
+# │   │   │   └── UserManagementTab.js
+
+
 # │   │   ├── Dashboard.js
 
 # │   │   ├── BidModal.js
@@ -566,7 +577,7 @@
 
 # 
 
-# This is a private project for Greater Lincolnshire Nature Partnership. For access or contributions, contact the development team.
+# This is a private project for Green Investment in Greater Lincolnshire Ltd. For access or contributions, contact the development team.
 
 # 
 
@@ -574,7 +585,7 @@
 
 # 
 
-# © 2025 Greater Lincolnshire Nature Partnership. All rights reserved.
+# © 2025 David Baxter Environmental Ltd. All rights reserved.
 
 # 
 
@@ -588,9 +599,9 @@
 
 # \### \*\*Contact\*\*
 
-# \- \*\*Support\*\*: support@gigl.co.uk
+# \- \*\*Support\*\*: gigl@lincstrust.co.uk
 
-# \- \*\*Developer\*\*: david@baxterenvironmental.co.uk
+# \- \*\*Developer\*\*: info@baxterenvironmental.co.uk
 
 # \- \*\*Partnership\*\*: Lincolnshire Wildlife Trust
 
@@ -600,5 +611,5 @@
 
 # 
 
-# \*\*Built with ❤️ for biodiversity by Baxter Environmental\*\*
+# \*\*Built with ❤️ for biodiversity by David Baxter Environmental Ltd\*\*
 
