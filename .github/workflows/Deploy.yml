@@ -46,13 +46,14 @@ jobs:
 
     - name: Deploy to Firebase
       run: |
-        # Create a temporary file for the service account key
-        echo "${{ secrets.GCP_SA_KEY }}" > /tmp/gcp_sa_key.json
+        # Decode the base64 encoded service account key and write to a temporary file
+        # This is crucial for handling multi-line JSON secrets correctly
+        echo "${{ secrets.GCP_SA_KEY }}" | base64 --decode > /tmp/gcp_sa_key.json
 
         # --- DEBUG STEP: Verify content of the created file (sensitive parts will be masked) ---
-        echo "--- Debugging Service Account Key File Content ---"
+        echo "--- Debugging Service Account Key File Content (Decoded) ---"
         head -n 5 /tmp/gcp_sa_key.json # Print first 5 lines of the JSON file
-        echo "-------------------------------------------------"
+        echo "------------------------------------------------------------"
         # --- END DEBUG STEP ---
 
         # Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to point to the file
