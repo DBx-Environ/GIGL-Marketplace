@@ -1,0 +1,11 @@
+
+> bidding-app@0.1.0 build
+> react-scripts build
+
+Creating an optimized production build...
+Failed to compile.
+
+Module not found: Error: You attempted to import ../../firebase/config which falls outside of the project src/ directory. Relative imports outside of src/ are not supported.
+You can either move it inside src/, or add a symlink to it from project's node_modules/.
+
+
