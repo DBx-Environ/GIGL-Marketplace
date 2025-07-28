@@ -4,7 +4,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase/config'; // Ensure this path is correct for your project
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-toastify';
-import { User, Mail, Phone, Building, MapPin, Edit, Save, XCircle, Info, MessageSquare, Home, Tag } from 'lucide-react'; // Added Home and Tag icons
+import { Mail, Building, MapPin, Edit, Save, XCircle, MessageSquare, Home, Tag } from 'lucide-react'; // Removed User, Phone, Info icons
 import './ProfilePanel.css'; // Import the CSS file
 
 function ProfilePanel() {
@@ -69,7 +69,7 @@ function ProfilePanel() {
         postcode: formData.postcode,
         updatedAt: new Date(), // Add an updatedAt timestamp for tracking
       });
-      
+
       // Update the AuthContext's userData state to reflect changes immediately
       updateUserData({
         ...userData, // Keep existing userData fields

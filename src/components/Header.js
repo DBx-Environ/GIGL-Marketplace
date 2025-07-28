@@ -3,7 +3,7 @@ import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-toastify';
-import { LogOut, User } from 'lucide-react'; // Import User icon
+import { LogOut } from 'lucide-react'; // Removed User icon
 
 function Header() {
   const { currentUser, userData, logout } = useAuth();
@@ -33,9 +33,9 @@ function Header() {
       <div className="header-content">
         {/* Logo */}
         <Link to="/" className="logo-container">
-          <img 
-            src="/GIGL_Logo_Small.png" 
-            alt="GIGL Logo" 
+          <img
+            src="/GIGL_Logo_Small.png"
+            alt="GIGL Logo"
             className="logo"
             style={{ width: '40px', height: '40px', objectFit: 'contain' }}
           />
@@ -72,7 +72,7 @@ function Header() {
                 </Link>
               )}
             </nav>
-            
+
             {/* User Menu */}
             <div className="user-menu">
               <div className="user-info">

@@ -1,12 +1,12 @@
 // src/components/admin/UserBidsModal.js
 import React from 'react';
 import { X } from 'lucide-react';
-import { 
-  formatDate, 
-  formatDateTime, 
-  getBidStatus, 
+import {
+  formatDate,
+  // Removed formatDateTime
+  getBidStatus,
   getLatestBidsPerOpportunity,
-  formatHabitatRequirementsCondensed
+  // Removed formatHabitatRequirementsCondensed
 } from '../../utils/bidHelpers'; // Import helper functions
 
 /**
@@ -42,7 +42,7 @@ function UserBidsModal({ user, bidsData, opportunitiesData, onClose }) {
               {latestUserBids.map(bid => {
                 const opportunity = opportunitiesData.find(opp => opp.id === bid.opportunityId);
                 const status = getBidStatus(bid, opportunitiesData); // Use the detailed status helper
-                
+
                 // Determine status badge class based on status string from bidHelpers
                 let statusBadgeClass = '';
                 if (status === 'Active') statusBadgeClass = 'status-active';

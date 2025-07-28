@@ -1,12 +1,12 @@
 // src/components/admin/UserManagementTab.js
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react'; // Removed useEffect
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config'; // Adjust path as needed
 import { toast } from 'react-toastify';
-import { CheckCircle, XCircle, Search, RefreshCcw, Edit, Save, Trash2, Eye, User, Tag, Filter } from 'lucide-react'; 
+import { CheckCircle, XCircle, Search, RefreshCcw, Edit, Save, Eye, User, Tag } from 'lucide-react'; // Removed Trash2, Filter
 import UserBidsModal from './UserBidsModal'; // Import the new modal component
 // Import helper functions and options from the new utility file
-import { formatDate, LPA_OPTIONS, NCA_OPTIONS } from '../../utils/bidHelpers'; 
+import { formatDate, LPA_OPTIONS, NCA_OPTIONS } from '../../utils/bidHelpers';
 
 const VERIFIED_STATUS_OPTIONS = [
   { label: 'All', value: '' },
@@ -56,7 +56,7 @@ function UserManagementTab({ usersData, bidsData, opportunitiesData, loading }) 
   const [editedUser, setEditedUser] = useState({});
   const [showUserBidsModal, setShowUserBidsModal] = useState(false);
   const [selectedUserForBids, setSelectedUserForBids] = useState(null);
-  
+
   // State for confirmation modal
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null); // Stores the action to perform after confirmation
@@ -90,8 +90,8 @@ function UserManagementTab({ usersData, bidsData, opportunitiesData, loading }) 
     const matchesNCA = filterNCA ? user.HomeNCA === filterNCA : true;
 
     // Apply Verified Status filter
-    const matchesVerifiedStatus = filterVerifiedStatus === '' 
-      ? true 
+    const matchesVerifiedStatus = filterVerifiedStatus === ''
+      ? true
       : user.emailVerified.toString() === filterVerifiedStatus;
 
     return matchesSearch && matchesLPA && matchesNCA && matchesVerifiedStatus;
@@ -119,7 +119,7 @@ function UserManagementTab({ usersData, bidsData, opportunitiesData, loading }) 
       HomeNCA: user.HomeNCA || '',
       SBI: user.SBI || '',
       isAdmin: user.isAdmin || false,
-    }); 
+    });
   };
 
   // Handle changes in the editable fields of a user
@@ -214,7 +214,7 @@ function UserManagementTab({ usersData, bidsData, opportunitiesData, loading }) 
   return (
     <div className="user-management-tab">
       <h2 className="tab-section-title">User Overview</h2>
-      
+
       {/* User Statistics Cards */}
       <div className="stats-grid">
         <div className="stat-card">
@@ -256,7 +256,7 @@ function UserManagementTab({ usersData, bidsData, opportunitiesData, loading }) 
       </div>
 
       <h2 className="tab-section-title">Manage Users</h2>
-      
+
       {/* User Filters */}
       <div className="filter-bar">
         <div className="search-input-group">

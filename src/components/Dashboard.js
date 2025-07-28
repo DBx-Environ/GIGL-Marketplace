@@ -7,20 +7,20 @@ import { Edit, Plus, Filter, X } from 'lucide-react';
 import './Dashboard.css';
 import BidModal from './BidModal';
 // Import helper functions and options from the new utility file
-import { 
-  formatDate, 
-  formatDateTime, 
-  getBidStatus, 
-  getLatestBidsPerOpportunity, 
+import {
+  formatDate,
+  formatDateTime,
+  getBidStatus,
+  getLatestBidsPerOpportunity,
   isOpportunityClosingSoon,
-  isOpportunityActiveAndOpen, 
+  isOpportunityActiveAndOpen,
   formatHabitatRequirementsCondensed,
-  LPA_OPTIONS, 
-  NCA_OPTIONS  
+  LPA_OPTIONS,
+  NCA_OPTIONS
 } from '../utils/bidHelpers';
 
 const BID_STATUS_OPTIONS = [
-  "Active", "Overall Winner", "Won 1 Habitat", "Won", "Not Selected", "Withdrawn", "Expired" 
+  "Active", "Overall Winner", "Won 1 Habitat", "Won", "Not Selected", "Withdrawn", "Expired"
 ];
 
 function Dashboard() {
@@ -83,15 +83,15 @@ function Dashboard() {
   // Handle new bids from opportunities table
   const handlePlaceBid = (opportunity) => {
     // Check if user has any ACTIVE (non-withdrawn) bid on this opportunity
-    const existingActiveBid = userBids.find(bid => 
+    const existingActiveBid = userBids.find(bid =>
       bid.opportunityId === opportunity.id && bid.status !== 'withdrawn'
     );
-    
+
     if (existingActiveBid) {
       // User already has an active bid - do nothing
       return;
     }
-    
+
     // New bid (or re-bid after withdrawal)
     setSelectedOpportunity(opportunity);
     setSelectedBid(null); // Important: null for new bids
@@ -115,7 +115,7 @@ function Dashboard() {
     // Check if opportunity has passed closing date
     const now = new Date();
     let closingDate;
-    
+
     if (typeof opportunity.closingDate === 'string') {
       closingDate = new Date(opportunity.closingDate);
     } else if (opportunity.closingDate.toDate && typeof opportunity.closingDate.toDate === 'function') {
@@ -136,14 +136,14 @@ function Dashboard() {
 
   // FIXED: Check for ACTIVE (non-withdrawn) bids only
   const hasUserBidOnOpportunity = (opportunityId) => {
-    return userBids.some(bid => 
+    return userBids.some(bid =>
       bid.opportunityId === opportunityId && bid.status !== 'withdrawn'
     );
   };
 
   // Filter functions
   const getFilteredOpportunities = () => {
-    let filtered = bidOpportunities.filter(opportunity => 
+    let filtered = bidOpportunities.filter(opportunity =>
       isOpportunityActiveAndOpen(opportunity)
     );
 
@@ -168,7 +168,7 @@ function Dashboard() {
   const getFilteredBids = () => {
     // Use the corrected function that properly handles withdrawn bids
     const latestBids = getLatestBidsPerOpportunity(userBids);
-    
+
     let filtered = latestBids;
 
     // Apply status filter
@@ -189,42 +189,42 @@ function Dashboard() {
       const oppB = bidOpportunities.find(opp => opp.id === b.opportunityId);
       const statusA = getBidStatus(a, bidOpportunities); // Pass opportunitiesData
       const statusB = getBidStatus(b, bidOpportunities); // Pass opportunitiesData
-      
+
       const getPriority = (bid, opportunity, status) => {
         // 1. Active bids (HIGHEST PRIORITY - numbers 0-999)
         if (status === 'Active') {
           if (!opportunity) return 999;
-          const closingDate = typeof opportunity.closingDate === 'string' 
-            ? new Date(opportunity.closingDate) 
+          const closingDate = typeof opportunity.closingDate === 'string'
+            ? new Date(opportunity.closingDate)
             : opportunity.closingDate.toDate();
           const now = new Date();
           const daysUntilClose = Math.max(0, Math.floor((closingDate - now) / (1000 * 60 * 60 * 24)));
           return daysUntilClose;
         }
-        
+
         // 2. Overall winners (priority 1000-1999)
         if (status === 'Overall Winner' || status === 'Won') {
           return 1000;
         }
-        
+
         // 3. Habitat winners (priority 2000-2999)
         if (status.includes('Won') && status.includes('Habitat')) {
           return 2000;
         }
-        
+
         // 4. Not selected (priority 3000-3999)
         if (status === 'Not Selected' || status === 'Expired') {
           return 3000;
         }
-        
+
         // 5. Withdrawn bids (LOWEST PRIORITY - 4000+)
         if (status === 'Withdrawn') {
           return 4000;
         }
-        
+
         return 3500;
       };
-      
+
       return getPriority(a, oppA, statusA) - getPriority(b, oppB, statusB);
     });
   };
@@ -369,15 +369,10 @@ function Dashboard() {
                 {getFilteredBids().map((bid) => {
                   const opportunity = bidOpportunities.find(opp => opp.id === bid.opportunityId);
                   const status = getBidStatus(bid, bidOpportunities); // Pass opportunitiesData
-                  
-                  // Determine the correct date to display based on opportunity status
-                  const displayDate = opportunity?.status === 'closed' && opportunity?.closedAt
-                    ? opportunity.closedAt
-                    : opportunity?.closingDate;
 
                   return (
-                    <div 
-                      key={bid.id} 
+                    <div
+                      key={bid.id}
                       className={`bid-card status-${status.toLowerCase().replace(/\s+/g, '-')}`}
                       style={{ opacity: status === 'Withdrawn' ? 0.6 : 1 }}
                     >
@@ -400,11 +395,11 @@ function Dashboard() {
 
                       {/* Condensed Habitat Bids Display */}
                       {bid.habitatBids && bid.habitatBids.length > 0 && (
-                        <div style={{ 
-                          fontSize: '12px', 
-                          color: '#374151', 
-                          backgroundColor: '#f8fafc', 
-                          padding: '8px', 
+                        <div style={{
+                          fontSize: '12px',
+                          color: '#374151',
+                          backgroundColor: '#f8fafc',
+                          padding: '8px',
                           borderRadius: '4px',
                           marginBottom: '8px',
                           marginTop: '4px',
@@ -427,10 +422,10 @@ function Dashboard() {
                               )}
                             </div>
                           ))}
-                          <div style={{ 
-                            borderTop: '1px solid #e2e8f0', 
-                            paddingTop: '4px', 
-                            marginTop: '4px', 
+                          <div style={{
+                            borderTop: '1px solid #e2e8f0',
+                            paddingTop: '4px',
+                            marginTop: '4px',
                             fontWeight: '500',
                             color: '#16a34a'
                           }}>
@@ -438,7 +433,7 @@ function Dashboard() {
                           </div>
                         </div>
                       )}
-                      
+
                       <div className="bid-card-footer">
                         <div style={{ fontSize: '12px', flex: 1 }}>
                           <span>
@@ -446,8 +441,8 @@ function Dashboard() {
                             {bid.updatedAt && bid.updatedAt !== bid.createdAt && (
                               <span> • Updated: {formatDate(bid.updatedAt)}</span>
                             )}
-                            {opportunity && 
-                              <span> • Closure Date: {formatDate(displayDate)}</span> 
+                            {opportunity &&
+                              <span> • Closure Date: {formatDateTime(opportunity.status === 'closed' && opportunity.closedAt ? opportunity.closedAt : opportunity.closingDate)}</span>
                             }
                           </span>
                         </div>
@@ -555,7 +550,7 @@ function Dashboard() {
                     ))}
                   </select>
                 </div>
-                
+
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <label style={{ fontSize: '13px', fontWeight: '500', color: '#374151', minWidth: '35px' }}>
                     NCA:
@@ -578,7 +573,7 @@ function Dashboard() {
                     ))}
                   </select>
                 </div>
-                
+
                 {hasActiveOpportunityFilters && (
                   <button
                     onClick={clearOpportunityFilters}
@@ -606,12 +601,12 @@ function Dashboard() {
           <div style={{ padding: '24px' }}>
             {(() => {
               const filteredOpportunities = getFilteredOpportunities();
-              
+
               if (filteredOpportunities.length === 0) {
                 return (
                   <p style={{ color: '#6b7280', textAlign: 'center', padding: '32px 0' }}>
-                    {hasActiveOpportunityFilters 
-                      ? 'No opportunities match your current filters' 
+                    {hasActiveOpportunityFilters
+                      ? 'No opportunities match your current filters'
                       : 'No active opportunities available'
                     }
                   </p>
@@ -623,17 +618,12 @@ function Dashboard() {
                   {filteredOpportunities.map((opportunity) => {
                     const hasUserBid = hasUserBidOnOpportunity(opportunity.id);
                     const isClosingSoon = isOpportunityClosingSoon(opportunity.closingDate);
-                    
-                    // Define displayDate here for this scope
-                    const displayDate = opportunity.status === 'closed' && opportunity.closedAt
-                      ? opportunity.closedAt
-                      : opportunity.closingDate;
 
                     return (
-                      <div key={opportunity.id} style={{ 
-                        border: isClosingSoon ? '2px solid #f59e0b' : '1px solid #e5e7eb', 
-                        borderRadius: '8px', 
-                        padding: '16px', 
+                      <div key={opportunity.id} style={{
+                        border: isClosingSoon ? '2px solid #f59e0b' : '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        padding: '16px',
                         backgroundColor: isClosingSoon ? '#fffbeb' : '#fafafa'
                       }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
@@ -648,24 +638,24 @@ function Dashboard() {
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
                             {isClosingSoon && (
-                              <span style={{ 
-                                color: '#92400e', 
-                                backgroundColor: '#fef3c7', 
-                                padding: '3px 8px', 
-                                borderRadius: '12px', 
-                                fontSize: '11px', 
+                              <span style={{
+                                color: '#92400e',
+                                backgroundColor: '#fef3c7',
+                                padding: '3px 8px',
+                                borderRadius: '12px',
+                                fontSize: '11px',
                                 fontWeight: '600'
                               }}>
                                 CLOSING SOON
                               </span>
                             )}
                             {hasUserBid && (
-                              <span style={{ 
-                                color: '#166534', 
-                                backgroundColor: '#dcfce7', 
-                                padding: '3px 8px', 
-                                borderRadius: '12px', 
-                                fontSize: '11px', 
+                              <span style={{
+                                color: '#166534',
+                                backgroundColor: '#dcfce7',
+                                padding: '3px 8px',
+                                borderRadius: '12px',
+                                fontSize: '11px',
                                 fontWeight: '500'
                               }}>
                                 YOU BID
@@ -675,18 +665,18 @@ function Dashboard() {
                         </div>
 
                         {/* Condensed Habitat Requirements */}
-                        <div style={{ 
-                          fontSize: '13px', 
-                          color: '#374151', 
-                          backgroundColor: '#f1f5f9', 
-                          padding: '8px', 
+                        <div style={{
+                          fontSize: '13px',
+                          color: '#374151',
+                          backgroundColor: '#f1f5f9',
+                          padding: '8px',
                           borderRadius: '4px',
                           marginBottom: '8px',
                           lineHeight: '1.4'
                         }}>
                           <strong>Habitats:</strong> {formatHabitatRequirementsCondensed(opportunity.habitatRequirements)}
                         </div>
-                        
+
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div style={{ fontSize: '13px', color: '#6b7280' }}>
                             <strong>Closure Date:</strong> {formatDateTime(opportunity.status === 'closed' && opportunity.closedAt ? opportunity.closedAt : opportunity.closingDate)} {/* Updated label and logic */}
@@ -714,10 +704,10 @@ function Dashboard() {
                                 <span>Place Bid</span>
                               </button>
                             )}
-                            
+
                             {hasUserBid && (
-                              <div style={{ 
-                                fontSize: '12px', 
+                              <div style={{
+                                fontSize: '12px',
                                 color: '#059669',
                                 fontStyle: 'italic',
                                 textAlign: 'right'
