@@ -48,15 +48,16 @@ jobs:
       run: |
         # Create a temporary file for the service account key
         echo "${{ secrets.GCP_SA_KEY }}" > /tmp/gcp_sa_key.json
+
+        # --- DEBUG STEP: Verify content of the created file (sensitive parts will be masked) ---
+        echo "--- Debugging Service Account Key File Content ---"
+        head -n 5 /tmp/gcp_sa_key.json # Print first 5 lines of the JSON file
+        echo "-------------------------------------------------"
+        # --- END DEBUG STEP ---
+
         # Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to point to the file
         export GOOGLE_APPLICATION_CREDENTIALS="/tmp/gcp_sa_key.json"
         # Deploy using Firebase CLI
         firebase deploy
       env:
-        # The GOOGLE_APPLICATION_CREDENTIALS environment variable is now set within the run block
-        # Do NOT include it here directly if you are setting it via 'export' in the 'run' script
-        # This block is kept for clarity, but the actual setting happens above.
-        # If you were to set it here, it would be: GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GCP_SA_KEY }}
-        # But the file-based approach is more reliable for complex JSON.
-        # No need for FIREBASE_TOKEN when using GOOGLE_APPLICATION_CREDENTIALS
         SKIP_FIREBASE_INIT: "true" # Optional: Can help prevent redundant firebase init prompts
