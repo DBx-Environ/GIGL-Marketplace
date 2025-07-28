@@ -1,12 +1,13 @@
 // src/components/admin/UserManagementTab.js
-import React, { useState } from 'react'; // Removed useEffect
+import React, { useState } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config'; // Adjust path as needed
 import { toast } from 'react-toastify';
-import { CheckCircle, XCircle, Search, RefreshCcw, Edit, Save, Eye, User, Tag } from 'lucide-react'; // Removed Trash2, Filter
+import { CheckCircle, XCircle, Search, RefreshCcw, Edit, Save, Eye, User, Tag, Droplet } from 'lucide-react'; // Added Droplet icon
 import UserBidsModal from './UserBidsModal'; // Import the new modal component
 // Import helper functions and options from the new utility file
 import { formatDate, LPA_OPTIONS, NCA_OPTIONS } from '../../utils/bidHelpers';
+import { WFD_OPTIONS } from '../../utils/wfdOptions'; // Import WFD_OPTIONS from utility file
 
 const VERIFIED_STATUS_OPTIONS = [
   { label: 'All', value: '' },
@@ -49,6 +50,7 @@ function UserManagementTab({ usersData, bidsData, opportunitiesData, loading }) 
   // Filter states
   const [filterLPA, setFilterLPA] = useState('');
   const [filterNCA, setFilterNCA] = useState('');
+  const [filterWFD, setFilterWFD] = useState(''); // New WFD filter state
   const [filterVerifiedStatus, setFilterVerifiedStatus] = useState('');
   const [filterSearchText, setFilterSearchText] = useState(''); // New search text filter
 
@@ -79,8 +81,9 @@ function UserManagementTab({ usersData, bidsData, opportunitiesData, loading }) 
       user.company?.toLowerCase().includes(searchLower) ||
       user.HomeLPA?.toLowerCase().includes(searchLower) ||
       user.HomeNCA?.toLowerCase().includes(searchLower) ||
+      user.HomeWFD?.toLowerCase().includes(searchLower) || // Include HomeWFD in search
       user.SBI?.toLowerCase().includes(searchLower) ||
-      user.mobile?.toLowerCase().includes(searchLower) // Include mobile in search
+      user.mobile?.toLowerCase().includes(searchLower)
     );
 
     // Apply LPA filter
@@ -89,21 +92,25 @@ function UserManagementTab({ usersData, bidsData, opportunitiesData, loading }) 
     // Apply NCA filter
     const matchesNCA = filterNCA ? user.HomeNCA === filterNCA : true;
 
+    // Apply WFD filter
+    const matchesWFD = filterWFD ? user.HomeWFD === filterWFD : true; // New WFD filter logic
+
     // Apply Verified Status filter
     const matchesVerifiedStatus = filterVerifiedStatus === ''
       ? true
       : user.emailVerified.toString() === filterVerifiedStatus;
 
-    return matchesSearch && matchesLPA && matchesNCA && matchesVerifiedStatus;
+    return matchesSearch && matchesLPA && matchesNCA && matchesWFD && matchesVerifiedStatus;
   });
 
   // Check if any filters are active
-  const hasActiveFilters = filterLPA || filterNCA || filterVerifiedStatus || filterSearchText;
+  const hasActiveFilters = filterLPA || filterNCA || filterWFD || filterVerifiedStatus || filterSearchText; // Updated to include WFD
 
   // Clear all filters
   const clearFilters = () => {
     setFilterLPA('');
     setFilterNCA('');
+    setFilterWFD(''); // Clear WFD filter
     setFilterVerifiedStatus('');
     setFilterSearchText('');
   };
@@ -117,6 +124,7 @@ function UserManagementTab({ usersData, bidsData, opportunitiesData, loading }) 
       // Ensure these are explicitly set even if null/undefined in Firestore
       HomeLPA: user.HomeLPA || '',
       HomeNCA: user.HomeNCA || '',
+      HomeWFD: user.HomeWFD || '', // Initialize HomeWFD for editing
       SBI: user.SBI || '',
       isAdmin: user.isAdmin || false,
     });
@@ -167,6 +175,7 @@ function UserManagementTab({ usersData, bidsData, opportunitiesData, loading }) 
         // Only update fields that are editable by admin in this view
         HomeLPA: editedUser.HomeLPA,
         HomeNCA: editedUser.HomeNCA,
+        HomeWFD: editedUser.HomeWFD, // Save HomeWFD
         SBI: editedUser.SBI,
         isAdmin: editedUser.isAdmin,
         updatedAt: new Date(), // Update timestamp
@@ -263,7 +272,7 @@ function UserManagementTab({ usersData, bidsData, opportunitiesData, loading }) 
           <Search size={18} className="search-icon" />
           <input
             type="text"
-            placeholder="Search by name, email, company, LPA, NCA, SBI, mobile..."
+            placeholder="Search by name, email, company, LPA, NCA, WFD, SBI, mobile..." // Updated placeholder
             value={filterSearchText}
             onChange={(e) => setFilterSearchText(e.target.value)}
             className="search-input"
@@ -301,6 +310,21 @@ function UserManagementTab({ usersData, bidsData, opportunitiesData, loading }) 
         </div>
 
         <div className="filter-group">
+          <label htmlFor="filterWFD" className="filter-label">Home WFD:</label> {/* New WFD filter */}
+          <select
+            id="filterWFD"
+            value={filterWFD}
+            onChange={(e) => setFilterWFD(e.target.value)}
+            className="filter-select"
+          >
+            <option value="">All WFD Op Catchments</option> {/* Updated filter label */}
+            {WFD_OPTIONS.map(wfd => (
+              <option key={wfd} value={wfd}>{wfd}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="filter-group">
           <label htmlFor="filterVerified" className="filter-label">Verified Status:</label>
           <select
             id="filterVerified"
@@ -331,11 +355,14 @@ function UserManagementTab({ usersData, bidsData, opportunitiesData, loading }) 
           <table className="table admin-table">
             <thead>
               <tr>
-                <th>Actions</th> {/* Moved to first column */}
-                <th>Name / Company</th> {/* Combined column heading */}
-                <th>Contact Info</th> {/* Combined Email/Mobile column heading */}
-                <th>Home LPA</th>
-                <th>Home NCA</th>
+                <th>Actions</th>
+                <th>Name / Company</th>
+                <th>Contact Info</th>
+                <th>
+                  <div>Home LPA</div>
+                  <div>Home NCA</div>
+                </th> {/* Stacked LPA and NCA */}
+                <th>Home WFD Op Catchment</th> {/* New column heading */}
                 <th>SBI</th>
                 <th>Verified</th>
                 <th>Admin</th>
@@ -345,7 +372,7 @@ function UserManagementTab({ usersData, bidsData, opportunitiesData, loading }) 
             <tbody>
               {filteredUsers.map(user => (
                 <tr key={user.id}>
-                  <td className="admin-table-actions"> {/* Actions column content */}
+                  <td className="admin-table-actions">
                     {editingUserId === user.id ? (
                       <>
                         <button onClick={() => handlePreSave(user.id)} className="action-button save" title="Save">
@@ -363,51 +390,65 @@ function UserManagementTab({ usersData, bidsData, opportunitiesData, loading }) 
                         <button onClick={() => handleViewBids(user)} className="action-button view" title="View Bids">
                           <Eye size={18} />
                         </button>
-                        {/* Add delete functionality if required later */}
-                        {/* <button className="action-button delete" title="Delete"><Trash2 size={18} /></button> */}
                       </>
                     )}
                   </td>
-                  <td> {/* Combined Name / Company column content */}
+                  <td>
                     <div>{user.firstName} {user.lastName}</div>
-                    <div className="text-sm text-secondary">{user.company}</div> {/* Company on new line */}
+                    <div className="text-sm text-secondary">{user.company}</div>
                   </td>
-                  <td> {/* Combined Email / Mobile column content */}
+                  <td>
                     <div>{user.email}</div>
-                    <div className="text-sm text-secondary">{user.mobile || 'N/A'}</div> {/* Mobile on new line */}
+                    <div className="text-sm text-secondary">{user.mobile || 'N/A'}</div>
                   </td>
                   <td>
                     {editingUserId === user.id ? (
-                      <select
-                        name="HomeLPA"
-                        value={editedUser.HomeLPA}
-                        onChange={handleChange}
-                        className="table-edit-input"
-                      >
-                        <option value="">Select LPA</option>
-                        {LPA_OPTIONS.map(lpa => (
-                          <option key={lpa} value={lpa}>{lpa}</option>
-                        ))}
-                      </select>
+                      <>
+                        <select
+                          name="HomeLPA"
+                          value={editedUser.HomeLPA}
+                          onChange={handleChange}
+                          className="table-edit-input mb-1" // Added margin-bottom
+                        >
+                          <option value="">Select LPA</option>
+                          {LPA_OPTIONS.map(lpa => (
+                            <option key={lpa} value={lpa}>{lpa}</option>
+                          ))}
+                        </select>
+                        <select
+                          name="HomeNCA"
+                          value={editedUser.HomeNCA}
+                          onChange={handleChange}
+                          className="table-edit-input"
+                        >
+                          <option value="">Select NCA</option>
+                          {NCA_OPTIONS.map(nca => (
+                            <option key={nca} value={nca}>{nca}</option>
+                          ))}
+                        </select>
+                      </>
                     ) : (
-                      user.HomeLPA || 'N/A'
+                      <>
+                        <div>{user.HomeLPA || 'N/A'}</div>
+                        <div className="text-sm text-secondary">{user.HomeNCA || 'N/A'}</div>
+                      </>
                     )}
                   </td>
-                  <td>
+                  <td> {/* New Home WFD Op Catchment column */}
                     {editingUserId === user.id ? (
                       <select
-                        name="HomeNCA"
-                        value={editedUser.HomeNCA}
+                        name="HomeWFD"
+                        value={editedUser.HomeWFD}
                         onChange={handleChange}
                         className="table-edit-input"
                       >
-                        <option value="">Select NCA</option>
-                        {NCA_OPTIONS.map(nca => (
-                          <option key={nca} value={nca}>{nca}</option>
+                        <option value="">Select WFD Op Catchment</option> {/* Updated option label */}
+                        {WFD_OPTIONS.map(wfd => (
+                          <option key={wfd} value={wfd}>{wfd}</option>
                         ))}
                       </select>
                     ) : (
-                      user.HomeNCA || 'N/A'
+                      user.HomeWFD || 'N/A'
                     )}
                   </td>
                   <td>

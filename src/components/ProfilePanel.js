@@ -4,8 +4,9 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase/config'; // Ensure this path is correct for your project
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-toastify';
-import { Mail, Building, MapPin, Edit, Save, XCircle, MessageSquare, Home, Tag } from 'lucide-react'; // Removed User, Phone, Info icons
+import { Mail, Building, MapPin, Edit, Save, XCircle, MessageSquare, Home, Tag, Droplet } from 'lucide-react'; // Added Droplet icon for WFD
 import './ProfilePanel.css'; // Import the CSS file
+import { WFD_OPTIONS } from '../utils/wfdOptions'; // Import WFD_OPTIONS from utility file
 
 function ProfilePanel() {
   const { currentUser, userData, loading, updateUserData } = useAuth();
@@ -291,6 +292,13 @@ function ProfilePanel() {
               </div>
             </div>
             <div className="info-item">
+              <Droplet size={18} className="info-icon" /> {/* New icon for WFD */}
+              <div className="info-details">
+                <span className="info-label">Home WFD Op Catchment:</span> {/* Updated field title */}
+                <span className="info-value">{userData?.HomeWFD || 'N/A'}</span> {/* Display HomeWFD */}
+              </div>
+            </div>
+            <div className="info-item">
               <Home size={18} className="info-icon" />
               <div className="info-details">
                 <span className="info-label">Home LPA:</span>
@@ -311,12 +319,11 @@ function ProfilePanel() {
                 <span className="info-value">{userData?.SBI || '12345689'}</span>
               </div>
             </div>
-            {/* Removed Admin Status field */}
           </div>
           <div className="admin-contact-info">
             <MessageSquare size={24} className="contact-icon" />
             <p className="admin-contact-text">
-              To update your Registered Email, Home LPA, Home NCA, or Single Business Identifier (SBI) codes,
+              To update your Home WFD Op Catchment, Home LPA, Home NCA, or Single Business Identifier (SBI) code,
               please contact the administrator at{' '}
               <a href="mailto:gigl@lincstrust.co.uk" className="contact-link">
                 gigl@lincstrust.co.uk

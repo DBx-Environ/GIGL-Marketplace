@@ -1,5 +1,5 @@
 // src/components/admin/OpportunitiesTab.js - Syntax & Validation Fix
-import React, { useState, useMemo } from 'react'; // Removed useRef, useEffect
+import React, { useState, useMemo } from 'react';
 import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../firebase/config'; // Import functions from config
@@ -7,15 +7,15 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { toast } from 'react-toastify';
-import { Plus, X, Eye, Calendar, MapPin, Leaf, CheckCircle, Search, RefreshCcw } from 'lucide-react'; // Removed Filter
+import { Plus, X, Eye, Calendar, MapPin, Leaf, CheckCircle, Search, RefreshCcw } from 'lucide-react';
 // Import helper functions and options from the new utility file
 import {
   formatDate,
-  // Removed formatDateTime
   getBidStatus,
   LPA_OPTIONS,
   NCA_OPTIONS
 } from '../../utils/bidHelpers';
+import { WFD_OPTIONS } from '../../utils/wfdOptions'; // Import WFD_OPTIONS
 
 // Keep existing HABITAT_MAPPING local as it's specific to this form
 const HABITAT_MAPPING = {
@@ -147,6 +147,13 @@ const schema = yup.object().shape({
   title: yup.string().required('Title is required'),
   lpa: yup.string().required('LPA is required'),
   nca: yup.string().required('NCA is required'),
+  wfd: yup.string().when('habitatRequirements', {
+    is: (habitatRequirements) =>
+      habitatRequirements &&
+      habitatRequirements.some((hr) => hr.broadHabitat === 'Watercourse'),
+    then: (schema) => schema.required('WFD Op Catchment is required if Watercourse habitat is specified'),
+    otherwise: (schema) => schema.notRequired(),
+  }),
   closingDate: yup.date().required('Closing date is required').min(new Date(), 'Closing date must be in the future'),
   habitatRequirements: yup.array().of(
     yup.object().shape({
@@ -177,6 +184,7 @@ function OpportunitiesTab({
   // State for filters
   const [lpaFilter, setLpaFilter] = useState('');
   const [ncaFilter, setNcaFilter] = useState('');
+  const [wfdFilter, setWfdFilter] = useState(''); // New WFD filter state
   const [statusFilter, setStatusFilter] = useState('');
   const [searchText, setSearchText] = useState('');
 
@@ -193,7 +201,7 @@ function OpportunitiesTab({
   const [closeReasonDetails, setCloseReasonDetails] = useState('');
 
   // Form setup
-  const { register, handleSubmit, formState, reset, control, watch, setValue, trigger, clearErrors } = useForm({ // Removed getFieldState
+  const { register, handleSubmit, formState, reset, control, watch, setValue, trigger, clearErrors } = useForm({
     resolver: yupResolver(schema),
     mode: 'onSubmit',
     defaultValues: {
@@ -202,11 +210,12 @@ function OpportunitiesTab({
         const date = new Date();
         date.setDate(date.getDate() + 7);
         return date.toISOString().slice(0, 16);
-      })()
+      })(),
+      wfd: '' // Initialize WFD field
     }
   });
 
-  const { errors } = formState; // Removed isValid
+  const { errors } = formState;
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -214,13 +223,21 @@ function OpportunitiesTab({
   });
 
   const watchedHabitats = watch("habitatRequirements");
+  const watchedWFD = watch("wfd"); // Watch WFD field for validation triggering
+
+  // Effect to trigger WFD validation when habitat requirements change
+  // This is crucial for the conditional validation of the WFD field
+  React.useEffect(() => {
+    trigger('wfd');
+  }, [watchedHabitats, trigger]);
+
 
   /**
    * Determine if any filters are currently applied
    */
   const areFiltersApplied = useMemo(() => {
-    return lpaFilter !== '' || ncaFilter !== '' || statusFilter !== '' || searchText !== '';
-  }, [lpaFilter, ncaFilter, statusFilter, searchText]);
+    return lpaFilter !== '' || ncaFilter !== '' || wfdFilter !== '' || statusFilter !== '' || searchText !== '';
+  }, [lpaFilter, ncaFilter, wfdFilter, statusFilter, searchText]); // Include wfdFilter
 
   /**
    * Determine if the last habitat row is valid to enable adding a new one
@@ -259,6 +276,8 @@ function OpportunitiesTab({
       `habitatRequirements.${index}.specificHabitat`,
       `habitatRequirements.${index}.unitsRequired`
     ]);
+    // Also trigger WFD validation if broad habitat changes to or from 'Watercourse'
+    trigger('wfd');
   };
 
   /**
@@ -453,18 +472,20 @@ function OpportunitiesTab({
     return opportunitiesData.filter(opp => {
       const matchesLPA = lpaFilter === '' || opp.lpa === lpaFilter;
       const matchesNCA = ncaFilter === '' || opp.nca === ncaFilter;
+      const matchesWFD = wfdFilter === '' || opp.wfd === wfdFilter; // New WFD filter logic
       const matchesStatus = statusFilter === '' || opp.status === statusFilter;
 
       const searchLower = searchText.toLowerCase();
       const matchesSearch = (
         opp.title?.toLowerCase().includes(searchLower) ||
         opp.lpa?.toLowerCase().includes(searchLower) ||
-        opp.nca?.toLowerCase().includes(searchLower)
+        opp.nca?.toLowerCase().includes(searchLower) ||
+        opp.wfd?.toLowerCase().includes(searchLower) // Include WFD in search
       );
 
-      return matchesLPA && matchesNCA && matchesStatus && matchesSearch;
+      return matchesLPA && matchesNCA && matchesWFD && matchesStatus && matchesSearch; // Include WFD in overall filter check
     });
-  }, [opportunitiesData, lpaFilter, ncaFilter, statusFilter, searchText]);
+  }, [opportunitiesData, lpaFilter, ncaFilter, wfdFilter, statusFilter, searchText]); // Include wfdFilter
 
   /**
    * Clear all filters
@@ -472,6 +493,7 @@ function OpportunitiesTab({
   const clearFilters = () => {
     setLpaFilter('');
     setNcaFilter('');
+    setWfdFilter(''); // Clear WFD filter
     setStatusFilter('');
     setSearchText('');
   };
@@ -556,11 +578,11 @@ function OpportunitiesTab({
 
       {/* Filters */}
       <div className="filter-bar">
-        <div className="search-input-group">
+        <div className="search-input-group" style={{ flexGrow: 1, minWidth: '200px' }}> {/* Adjusted width */}
           <Search size={18} className="search-icon" />
           <input
             type="text"
-            placeholder="Search by title, LPA, NCA..."
+            placeholder="Search by title, LPA, NCA, WFD..." // Updated placeholder
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             className="search-input"
@@ -593,6 +615,21 @@ function OpportunitiesTab({
             <option value="">All NCAs</option>
             {NCA_OPTIONS.map(nca => (
               <option key={nca} value={nca}>{nca}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="filter-group"> {/* New WFD filter */}
+          <label htmlFor="filterWFD" className="filter-label">WFD:</label>
+          <select
+            id="filterWFD"
+            value={wfdFilter}
+            onChange={(e) => setWfdFilter(e.target.value)}
+            className="filter-select"
+          >
+            <option value="">All WFD Op Catchments</option>
+            {WFD_OPTIONS.map(wfd => (
+              <option key={wfd} value={wfd}>{wfd}</option>
             ))}
           </select>
         </div>
@@ -630,6 +667,7 @@ function OpportunitiesTab({
               <th>Title</th>
               <th>LPA</th>
               <th>NCA</th>
+              <th>WFD Op Catchment</th> {/* New column heading */}
               <th>Status</th>
               <th>Closure Date</th>
               <th>Reason for Close</th>
@@ -640,7 +678,7 @@ function OpportunitiesTab({
           <tbody>
             {filteredOpportunities.length === 0 ? (
               <tr>
-                <td colSpan="9" className="empty-state-cell">
+                <td colSpan="10" className="empty-state-cell"> {/* Updated colspan */}
                   No opportunities found matching your filters
                 </td>
               </tr>
@@ -681,6 +719,7 @@ function OpportunitiesTab({
                     <td>{opportunity.title}</td>
                     <td>{opportunity.lpa}</td>
                     <td>{opportunity.nca}</td>
+                    <td>{opportunity.wfd || 'N/A'}</td> {/* Display WFD */}
                     <td>
                       <span className={`status-badge ${statusColorClass}`}>
                         {opportunity.status}
@@ -739,8 +778,8 @@ function OpportunitiesTab({
                 </div>
               </div>
 
-              {/* Line 2: LPA, NCA */}
-              <div className="form-grid form-grid-2">
+              {/* Line 2: LPA, NCA, WFD */}
+              <div className="form-grid form-grid-3"> {/* Changed to form-grid-3 */}
                 <div className="form-group">
                   <label className="form-label">LPA *</label>
                   <select {...register('lpa')} className={`form-input ${errors.lpa ? 'error' : ''}`}>
@@ -761,6 +800,17 @@ function OpportunitiesTab({
                     ))}
                   </select>
                   {errors.nca && <span className="form-error">{errors.nca.message}</span>}
+                </div>
+
+                <div className="form-group"> {/* New WFD dropdown */}
+                  <label className="form-label">WFD Op Catchment {errors.wfd ? '*' : ''}</label> {/* Conditional asterisk */}
+                  <select {...register('wfd')} className={`form-input ${errors.wfd ? 'error' : ''}`}>
+                    <option value="">Select WFD Op Catchment</option>
+                    {WFD_OPTIONS.map(wfd => (
+                      <option key={wfd} value={wfd}>{wfd}</option>
+                    ))}
+                  </select>
+                  {errors.wfd && <span className="form-error">{errors.wfd.message}</span>}
                 </div>
               </div>
 

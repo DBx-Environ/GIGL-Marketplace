@@ -1,9 +1,9 @@
 // src/components/Dashboard.js - Cleaned Version (Debug Logs Removed)
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react'; // Corrected syntax: removed => 'react'
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
-import { Edit, Plus, Filter, X } from 'lucide-react';
+import { Edit, Plus, Filter, X, Droplet } from 'lucide-react'; // Added Droplet icon
 import './Dashboard.css';
 import BidModal from './BidModal';
 // Import helper functions and options from the new utility file
@@ -18,6 +18,7 @@ import {
   LPA_OPTIONS,
   NCA_OPTIONS
 } from '../utils/bidHelpers';
+import { WFD_OPTIONS } from '../utils/wfdOptions'; // Import WFD_OPTIONS from utility file
 
 const BID_STATUS_OPTIONS = [
   "Active", "Overall Winner", "Won 1 Habitat", "Won", "Not Selected", "Withdrawn", "Expired"
@@ -37,7 +38,8 @@ function Dashboard() {
   const [showBidFilters, setShowBidFilters] = useState(false);
   const [opportunityFilters, setOpportunityFilters] = useState({
     lpa: '',
-    nca: ''
+    nca: '',
+    wfd: '' // New WFD filter state
   });
   const [bidFilters, setBidFilters] = useState({
     status: ''
@@ -157,6 +159,11 @@ function Dashboard() {
       filtered = filtered.filter(opp => opp.nca === opportunityFilters.nca);
     }
 
+    // Apply WFD filter
+    if (opportunityFilters.wfd) { // New WFD filter logic
+      filtered = filtered.filter(opp => opp.wfd === opportunityFilters.wfd);
+    }
+
     // Sort by closing date (soonest first)
     return filtered.sort((a, b) => {
       const dateA = typeof a.closingDate === 'string' ? new Date(a.closingDate) : a.closingDate.toDate();
@@ -231,14 +238,14 @@ function Dashboard() {
 
   // Clear filter functions
   const clearOpportunityFilters = () => {
-    setOpportunityFilters({ lpa: '', nca: '' });
+    setOpportunityFilters({ lpa: '', nca: '', wfd: '' }); // Clear WFD filter
   };
 
   const clearBidFilters = () => {
     setBidFilters({ status: '' });
   };
 
-  const hasActiveOpportunityFilters = opportunityFilters.lpa || opportunityFilters.nca;
+  const hasActiveOpportunityFilters = opportunityFilters.lpa || opportunityFilters.nca || opportunityFilters.wfd; // Updated to include WFD
   const hasActiveBidFilters = bidFilters.status;
 
   if (loading) {
@@ -574,6 +581,29 @@ function Dashboard() {
                   </select>
                 </div>
 
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: '500', color: '#374151', minWidth: '35px' }}>
+                    WFD:
+                  </label>
+                  <select
+                    value={opportunityFilters.wfd}
+                    onChange={(e) => setOpportunityFilters({ ...opportunityFilters, wfd: e.target.value })}
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: '13px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      backgroundColor: 'white',
+                      minWidth: '200px'
+                    }}
+                  >
+                    <option value="">All WFD Op Catchments</option> {/* Updated filter label */}
+                    {WFD_OPTIONS.map(wfd => (
+                      <option key={wfd} value={wfd}>{wfd}</option>
+                    ))}
+                  </select>
+                </div>
+
                 {hasActiveOpportunityFilters && (
                   <button
                     onClick={clearOpportunityFilters}
@@ -634,6 +664,7 @@ function Dashboard() {
                             <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '4px' }}>
                               <span style={{ marginRight: '16px' }}><strong>LPA:</strong> {opportunity.lpa}</span>
                               <span><strong>NCA:</strong> {opportunity.nca}</span>
+                              {opportunity.wfd && <span style={{ marginLeft: '16px' }}><strong>WFD:</strong> {opportunity.wfd}</span>} {/* Display WFD */}
                             </div>
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
@@ -679,7 +710,7 @@ function Dashboard() {
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div style={{ fontSize: '13px', color: '#6b7280' }}>
-                            <strong>Closure Date:</strong> {formatDateTime(opportunity.status === 'closed' && opportunity.closedAt ? opportunity.closedAt : opportunity.closingDate)} {/* Updated label and logic */}
+                            <strong>Closure Date:</strong> {formatDateTime(opportunity.status === 'closed' && opportunity.closedAt ? opportunity.closedAt : opportunity.closingDate)}
                           </div>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             {!hasUserBid && (
