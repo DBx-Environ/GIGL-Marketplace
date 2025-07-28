@@ -223,7 +223,7 @@ function OpportunitiesTab({
   });
 
   const watchedHabitats = watch("habitatRequirements");
-  const watchedWFD = watch("wfd"); // Watch WFD field for validation triggering
+  // Removed: const watchedWFD = watch("wfd"); // 'watchedWFD' is assigned a value but never used
 
   // Effect to trigger WFD validation when habitat requirements change
   // This is crucial for the conditional validation of the WFD field

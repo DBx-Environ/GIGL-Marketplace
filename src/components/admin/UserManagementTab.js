@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config'; // Adjust path as needed
 import { toast } from 'react-toastify';
-import { CheckCircle, XCircle, Search, RefreshCcw, Edit, Save, Eye, User, Tag, Droplet } from 'lucide-react'; // Added Droplet icon
+import { CheckCircle, XCircle, Search, RefreshCcw, Edit, Save, Eye, User, Tag } from 'lucide-react'; // Removed Droplet icon
 import UserBidsModal from './UserBidsModal'; // Import the new modal component
 // Import helper functions and options from the new utility file
 import { formatDate, LPA_OPTIONS, NCA_OPTIONS } from '../../utils/bidHelpers';
@@ -317,7 +317,7 @@ function UserManagementTab({ usersData, bidsData, opportunitiesData, loading }) 
             onChange={(e) => setFilterWFD(e.target.value)}
             className="filter-select"
           >
-            <option value="">All WFD Op Catchments</option> {/* Updated filter label */}
+            <option value="">All WFD Op Catchments</option>
             {WFD_OPTIONS.map(wfd => (
               <option key={wfd} value={wfd}>{wfd}</option>
             ))}
@@ -442,7 +442,7 @@ function UserManagementTab({ usersData, bidsData, opportunitiesData, loading }) 
                         onChange={handleChange}
                         className="table-edit-input"
                       >
-                        <option value="">Select WFD Op Catchment</option> {/* Updated option label */}
+                        <option value="">Select WFD Op Catchment</option>
                         {WFD_OPTIONS.map(wfd => (
                           <option key={wfd} value={wfd}>{wfd}</option>
                         ))}

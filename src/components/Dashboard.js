@@ -1,9 +1,9 @@
 // src/components/Dashboard.js - Cleaned Version (Debug Logs Removed)
-import React, { useState, useEffect } from 'react'; // Corrected syntax: removed => 'react'
+import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
-import { Edit, Plus, Filter, X, Droplet } from 'lucide-react'; // Added Droplet icon
+import { Edit, Plus, Filter, X } from 'lucide-react'; // Removed Droplet icon
 import './Dashboard.css';
 import BidModal from './BidModal';
 // Import helper functions and options from the new utility file
@@ -597,7 +597,7 @@ function Dashboard() {
                       minWidth: '200px'
                     }}
                   >
-                    <option value="">All WFD Op Catchments</option> {/* Updated filter label */}
+                    <option value="">All WFD Op Catchments</option>
                     {WFD_OPTIONS.map(wfd => (
                       <option key={wfd} value={wfd}>{wfd}</option>
                     ))}
