@@ -1,0 +1,62 @@
+
+> lint
+> eslint .
+
+
+C:\Users\david\bidding-app\functions\modules\bidFunctions.js
+   79:1  error  Missing JSDoc for parameter 'bidData'          valid-jsdoc
+   79:1  error  Missing JSDoc for parameter 'bidId'            valid-jsdoc
+   79:1  error  Missing JSDoc for parameter 'action'           valid-jsdoc
+  330:1  error  Missing JSDoc for parameter 'userData'         valid-jsdoc
+  330:1  error  Missing JSDoc for parameter 'opportunityData'  valid-jsdoc
+  330:1  error  Missing JSDoc for parameter 'bidData'          valid-jsdoc
+  330:1  error  Missing JSDoc for parameter 'bidId'            valid-jsdoc
+  330:1  error  Missing JSDoc for parameter 'actionDate'       valid-jsdoc
+
+C:\Users\david\bidding-app\functions\modules\emailFunctions.js
+    6:1  error  Missing JSDoc for parameter 'to'           valid-jsdoc
+    6:1  error  Missing JSDoc for parameter 'subject'      valid-jsdoc
+    6:1  error  Missing JSDoc for parameter 'htmlContent'  valid-jsdoc
+    6:1  error  Missing JSDoc for parameter 'type'         valid-jsdoc
+  113:1  error  Missing JSDoc for parameter 'userEmail'    valid-jsdoc
+  113:1  error  Missing JSDoc for parameter 'firstName'    valid-jsdoc
+  113:1  error  Missing JSDoc for parameter 'lastName'     valid-jsdoc
+
+C:\Users\david\bidding-app\functions\modules\opportunityFunctions.js
+  122:13  error  'result' is assigned a value but never used        no-unused-vars
+  180:1   error  Missing JSDoc for parameter 'opportunityId'        valid-jsdoc
+  180:1   error  Missing JSDoc for parameter 'closedBy'             valid-jsdoc
+  180:1   error  Missing JSDoc for parameter 'reason'               valid-jsdoc
+  180:1   error  Missing JSDoc for parameter 'reasonDetails'        valid-jsdoc
+  327:1   error  Missing JSDoc for parameter 'opportunityData'      valid-jsdoc
+  327:1   error  Missing JSDoc for parameter 'activeBids'           valid-jsdoc
+  327:1   error  Missing JSDoc for parameter 'reason'               valid-jsdoc
+  327:1   error  Missing JSDoc for parameter 'reasonDetails'        valid-jsdoc
+  327:1   error  Missing JSDoc for parameter 'overallWinner'        valid-jsdoc
+  327:1   error  Missing JSDoc for parameter 'habitatWinners'       valid-jsdoc
+  423:1   error  Missing JSDoc for parameter 'opportunityData'      valid-jsdoc
+  423:1   error  Missing JSDoc for parameter 'bidCount'             valid-jsdoc
+  423:1   error  Missing JSDoc for parameter 'reason'               valid-jsdoc
+  423:1   error  Missing JSDoc for parameter 'reasonDetails'        valid-jsdoc
+  468:1   error  Missing JSDoc for parameter 'activeBids'           valid-jsdoc
+  468:1   error  Missing JSDoc for parameter 'habitatRequirements'  valid-jsdoc
+  574:1   error  Missing JSDoc for parameter 'activeBids'           valid-jsdoc
+  574:1   error  Missing JSDoc for parameter 'overallWinner'        valid-jsdoc
+  574:1   error  Missing JSDoc for parameter 'habitatWinners'       valid-jsdoc
+  621:1   error  Missing JSDoc for parameter 'activeBids'           valid-jsdoc
+  621:1   error  Missing JSDoc for parameter 'overallWinner'        valid-jsdoc
+  621:1   error  Missing JSDoc for parameter 'habitatWinners'       valid-jsdoc
+  621:1   error  Missing JSDoc for parameter 'opportunityData'      valid-jsdoc
+  621:1   error  Missing JSDoc for parameter 'closedBy'             valid-jsdoc
+  713:1   error  Missing JSDoc for parameter 'opportunityData'      valid-jsdoc
+  713:1   error  Missing JSDoc for parameter 'winnerData'           valid-jsdoc
+  713:1   error  Missing JSDoc for parameter 'type'                 valid-jsdoc
+  713:1   error  Missing JSDoc for parameter 'closedBy'             valid-jsdoc
+
+C:\Users\david\bidding-app\functions\modules\reminderFunctions.js
+  134:1  error  Missing JSDoc for parameter 'userData'         valid-jsdoc
+  134:1  error  Missing JSDoc for parameter 'opportunityData'  valid-jsdoc
+  134:1  error  Missing JSDoc for parameter 'hasBid'           valid-jsdoc
+
+✖ 47 problems (47 errors, 0 warnings)
+

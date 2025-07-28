@@ -1,8 +1,8 @@
-// src/components/Dashboard.js - Final Syntax & Scope Fix
+// src/components/Dashboard.js - Cleaned Version (Debug Logs Removed)
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { useAuth } from '../contexts/AuthContext'; // Corrected import statement
+import { useAuth } from '../contexts/AuthContext';
 import { Edit, Plus, Filter, X } from 'lucide-react';
 import './Dashboard.css';
 import BidModal from './BidModal';
@@ -13,7 +13,7 @@ import {
   getBidStatus, 
   getLatestBidsPerOpportunity, 
   isOpportunityClosingSoon,
-  isOpportunityActiveAndOpen,
+  isOpportunityActiveAndOpen, 
   formatHabitatRequirementsCondensed,
   LPA_OPTIONS, 
   NCA_OPTIONS  
@@ -57,7 +57,6 @@ function Dashboard() {
         id: doc.id,
         ...doc.data()
       }));
-      console.log('User bids loaded:', bids.length);
       setUserBids(bids);
     });
 
@@ -71,7 +70,6 @@ function Dashboard() {
         id: doc.id,
         ...doc.data()
       }));
-      console.log('All opportunities loaded:', opportunities.length);
       setBidOpportunities(opportunities);
       setLoading(false);
     });
@@ -91,7 +89,6 @@ function Dashboard() {
     
     if (existingActiveBid) {
       // User already has an active bid - do nothing
-      console.log('User already has an active bid on this opportunity');
       return;
     }
     
@@ -112,7 +109,6 @@ function Dashboard() {
 
     // Check if opportunity is closed
     if (opportunity.status === 'closed') {
-      console.log('Cannot edit bid - opportunity is closed');
       return;
     }
 
@@ -129,7 +125,6 @@ function Dashboard() {
     }
 
     if (now > closingDate) {
-      console.log('Cannot edit bid - opportunity has expired');
       return;
     }
 
@@ -451,8 +446,8 @@ function Dashboard() {
                             {bid.updatedAt && bid.updatedAt !== bid.createdAt && (
                               <span> • Updated: {formatDate(bid.updatedAt)}</span>
                             )}
-                            {opportunity && /* Corrected: Removed the extra outer parentheses around the span */
-                              <span> • Closure Date: {formatDate(displayDate)}</span> /* Updated label and date source */
+                            {opportunity && 
+                              <span> • Closure Date: {formatDate(displayDate)}</span> 
                             }
                           </span>
                         </div>
@@ -629,7 +624,7 @@ function Dashboard() {
                     const hasUserBid = hasUserBidOnOpportunity(opportunity.id);
                     const isClosingSoon = isOpportunityClosingSoon(opportunity.closingDate);
                     
-                    // Determine the correct date to display based on opportunity status
+                    // Define displayDate here for this scope
                     const displayDate = opportunity.status === 'closed' && opportunity.closedAt
                       ? opportunity.closedAt
                       : opportunity.closingDate;
@@ -697,9 +692,39 @@ function Dashboard() {
                             <strong>Closure Date:</strong> {formatDateTime(opportunity.status === 'closed' && opportunity.closedAt ? opportunity.closedAt : opportunity.closingDate)} {/* Updated label and logic */}
                           </div>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            {opportunity && /* Corrected: Removed the extra outer parentheses around the span */
-                              <span> • Closure Date: {formatDate(displayDate)}</span> /* Updated label and date source */
-                            }
+                            {!hasUserBid && (
+                              <button
+                                onClick={() => handlePlaceBid(opportunity)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '6px 12px',
+                                  fontSize: '13px',
+                                  fontWeight: '500',
+                                  borderRadius: '6px',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  backgroundColor: isClosingSoon ? '#f59e0b' : '#2563eb',
+                                  color: 'white',
+                                  transition: 'all 0.2s ease'
+                                }}
+                              >
+                                <Plus size={14} />
+                                <span>Place Bid</span>
+                              </button>
+                            )}
+                            
+                            {hasUserBid && (
+                              <div style={{ 
+                                fontSize: '12px', 
+                                color: '#059669',
+                                fontStyle: 'italic',
+                                textAlign: 'right'
+                              }}>
+                                Use "Edit" from Bids to update
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>

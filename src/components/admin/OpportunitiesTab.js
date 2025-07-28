@@ -1,5 +1,5 @@
-// src/components/admin/OpportunitiesTab.js - Closure Date Update
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+// src/components/admin/OpportunitiesTab.js - Syntax & Validation Fix
+import React, { useState, useMemo } from 'react'; // Removed useRef, useEffect
 import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../firebase/config'; // Import functions from config
@@ -7,21 +7,21 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { toast } from 'react-toastify';
-import { Plus, X, Eye, Calendar, MapPin, Leaf, CheckCircle, Search, RefreshCcw, Filter } from 'lucide-react'; 
+import { Plus, X, Eye, Calendar, MapPin, Leaf, CheckCircle, Search, RefreshCcw } from 'lucide-react'; // Removed Filter
 // Import helper functions and options from the new utility file
-import { 
-  formatDate, 
-  formatDateTime, 
-  getBidStatus, 
-  LPA_OPTIONS, 
-  NCA_OPTIONS 
+import {
+  formatDate,
+  // Removed formatDateTime
+  getBidStatus,
+  LPA_OPTIONS,
+  NCA_OPTIONS
 } from '../../utils/bidHelpers';
 
 // Keep existing HABITAT_MAPPING local as it's specific to this form
 const HABITAT_MAPPING = {
   "Cropland": [
     "Arable field margins cultivated annually",
-    "Arable field margins game bird mix", 
+    "Arable field margins game bird mix",
     "Arable field margins pollen and nectar",
     "Arable field margins tussocky"
   ],
@@ -153,7 +153,7 @@ const schema = yup.object().shape({
       broadHabitat: yup.string().required('Broad habitat is required'),
       specificHabitat: yup.string().required('Specific habitat is required'),
       unitsRequired: yup.number()
-        .typeError('Units needed is required') // Simplified error message
+        .typeError('Units needed is required')
         .required('Units needed is required')
         .min(0.01, 'Must be at least 0.01')
     })
@@ -161,24 +161,24 @@ const schema = yup.object().shape({
 });
 
 
-function OpportunitiesTab({ 
-  opportunities, 
-  opportunitiesData, 
-  bids, 
-  bidsData, 
-  users, 
-  usersData, 
-  loading 
+function OpportunitiesTab({
+  opportunities,
+  opportunitiesData,
+  bids,
+  bidsData,
+  users,
+  usersData,
+  loading
 }) {
   // State for form and UI
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
-  
+
   // State for filters
-  const [lpaFilter, setLpaFilter] = useState(''); 
-  const [ncaFilter, setNcaFilter] = useState(''); 
-  const [statusFilter, setStatusFilter] = useState(''); 
-  const [searchText, setSearchText] = useState(''); 
+  const [lpaFilter, setLpaFilter] = useState('');
+  const [ncaFilter, setNcaFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [searchText, setSearchText] = useState('');
 
   // State for bid modal
   const [showBidsModal, setShowBidsModal] = useState(false);
@@ -193,20 +193,20 @@ function OpportunitiesTab({
   const [closeReasonDetails, setCloseReasonDetails] = useState('');
 
   // Form setup
-  const { register, handleSubmit, formState, reset, control, watch, setValue, trigger, getFieldState, clearErrors } = useForm({
+  const { register, handleSubmit, formState, reset, control, watch, setValue, trigger, clearErrors } = useForm({ // Removed getFieldState
     resolver: yupResolver(schema),
-    mode: 'onSubmit', 
+    mode: 'onSubmit',
     defaultValues: {
       habitatRequirements: [{ broadHabitat: '', specificHabitat: '', unitsRequired: '' }],
       closingDate: (() => {
         const date = new Date();
         date.setDate(date.getDate() + 7);
-        return date.toISOString().slice(0, 16); 
+        return date.toISOString().slice(0, 16);
       })()
     }
   });
 
-  const { errors, isValid } = formState;
+  const { errors } = formState; // Removed isValid
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -227,30 +227,58 @@ function OpportunitiesTab({
    * Checks if all required fields in the last row are filled and have no errors.
    */
   const isLastHabitatRowValid = useMemo(() => {
-    if (fields.length === 0) return true; 
+    if (fields.length === 0) return true;
+
     const lastIndex = fields.length - 1;
     const lastHabitat = watchedHabitats[lastIndex];
 
-    // Check if values are present
-    const hasValues = lastHabitat?.broadHabitat && lastHabitat?.specificHabitat && lastHabitat?.unitsRequired > 0;
-    
-    // Check if there are errors for the specific fields in the last row
-    const hasErrorsOnLastRowFields = 
-      errors.habitatRequirements?.[lastIndex]?.broadHabitat || 
-      errors.habitatRequirements?.[lastIndex]?.specificHabitat || 
+    const broadHabitatValid = lastHabitat?.broadHabitat && lastHabitat.broadHabitat.trim() !== '';
+    const specificHabitatValid = lastHabitat?.specificHabitat && lastHabitat.specificHabitat.trim() !== '';
+    const unitsRequiredValue = parseFloat(lastHabitat?.unitsRequired);
+    const unitsRequiredValid = !isNaN(unitsRequiredValue) && unitsRequiredValue > 0;
+
+    // Check if there are RHF errors for the specific fields in the last row
+    const hasErrorsOnLastRowFields =
+      errors.habitatRequirements?.[lastIndex]?.broadHabitat ||
+      errors.habitatRequirements?.[lastIndex]?.specificHabitat ||
       errors.habitatRequirements?.[lastIndex]?.unitsRequired;
-    
-    return hasValues && !hasErrorsOnLastRowFields;
+
+    return broadHabitatValid && specificHabitatValid && unitsRequiredValid && !hasErrorsOnLastRowFields;
   }, [watchedHabitats, fields, errors.habitatRequirements]);
 
   /**
-   * Handle broad habitat change to update specific habitat options
+   * Handle broad habitat change to update specific habitat options and trigger validation
    */
   const handleBroadHabitatChange = (index, broadHabitat) => {
     setValue(`habitatRequirements.${index}.broadHabitat`, broadHabitat);
-    setValue(`habitatRequirements.${index}.specificHabitat`, ''); 
-    clearErrors(`habitatRequirements.${index}.specificHabitat`); 
-    trigger(`habitatRequirements.${index}.specificHabitat`); 
+    setValue(`habitatRequirements.${index}.specificHabitat`, ''); // Clear specific habitat when broad changes
+    clearErrors(`habitatRequirements.${index}.specificHabitat`);
+    // Trigger validation for all fields in the row for more reliable state update
+    trigger([
+      `habitatRequirements.${index}.broadHabitat`,
+      `habitatRequirements.${index}.specificHabitat`,
+      `habitatRequirements.${index}.unitsRequired`
+    ]);
+  };
+
+  /**
+   * Handle specific habitat change to trigger validation
+   */
+  const handleSpecificHabitatChange = (index, specificHabitat) => {
+    setValue(`habitatRequirements.${index}.specificHabitat`, specificHabitat);
+    // Trigger validation for all fields in the row for more reliable state update
+    trigger([
+      `habitatRequirements.${index}.specificHabitat`,
+      `habitatRequirements.${index}.unitsRequired`
+    ]);
+  };
+
+  /**
+   * Handle units required change to trigger validation
+   */
+  const handleUnitsRequiredChange = (index, value) => {
+    setValue(`habitatRequirements.${index}.unitsRequired`, value);
+    trigger(`habitatRequirements.${index}.unitsRequired`);
   };
 
   /**
@@ -259,14 +287,14 @@ function OpportunitiesTab({
   const onSubmit = async (data) => {
     try {
       setCreating(true);
-      
+
       await addDoc(collection(db, 'bidOpportunities'), {
         ...data,
         status: 'active',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      
+
       toast.success('Opportunity created successfully!');
       reset();
       setShowCreateForm(false);
@@ -283,13 +311,13 @@ function OpportunitiesTab({
    */
   const handleViewBids = async (opportunity) => {
     setSelectedOpportunity(opportunity);
-    
+
     // Get bids for this opportunity (excluding withdrawn bids)
-    const opportunityBids = bidsData.filter(bid => 
-      bid.opportunityId === opportunity.id && 
+    const opportunityBids = bidsData.filter(bid =>
+      bid.opportunityId === opportunity.id &&
       bid.status !== 'withdrawn'
     );
-    
+
     // Load user data for each bid
     const userPromises = opportunityBids.map(async (bid) => {
       try {
@@ -303,7 +331,7 @@ function OpportunitiesTab({
         return { userId: bid.userId, userData: null };
       }
     });
-    
+
     try {
       const userResults = await Promise.all(userPromises);
       const usersMap = {};
@@ -312,7 +340,7 @@ function OpportunitiesTab({
           usersMap[result.userId] = result.userData;
         }
       });
-      
+
       setModalUsers(usersMap);
       setModalBids(opportunityBids);
       setShowBidsModal(true);
@@ -340,19 +368,19 @@ function OpportunitiesTab({
     if (opportunity.status !== 'closed') {
       return '-';
     }
-  
+
     if (!opportunity.closeReason) {
-      return 'System'; 
+      return 'System';
     }
-  
+
     const reason = opportunity.closeReason.toLowerCase();
-  
+
     if (reason === 'error') return 'Error';
-    if (reason === 'buyer_withdrawal') return 'Buyer Withdrawal'; 
+    if (reason === 'buyer_withdrawal') return 'Buyer Withdrawal';
     if (reason === 'early_close') return 'Early Close';
     if (reason.includes('automatic') || reason.includes('time') || reason.includes('expired')) return 'Autoclosed';
-  
-    return 'Manual Close'; 
+
+    return 'Manual Close';
   };
 
   /**
@@ -384,20 +412,20 @@ function OpportunitiesTab({
    */
   const confirmCloseOpportunity = async () => {
     if (!closeReason || !closeOpportunityId) return;
-    
+
     try {
-      setCreating(true); 
-      
+      setCreating(true);
+
       const closeBidOpportunity = httpsCallable(functions, 'closeBidOpportunity');
-      
+
       const selectedReason = CLOSURE_REASONS.find(r => r.value === closeReason);
-      
+
       const result = await closeBidOpportunity({
         opportunityId: closeOpportunityId,
-        reason: closeReason, 
+        reason: closeReason,
         reasonDetails: closeReasonDetails || ''
       });
-      
+
       if (result.data && result.data.success) {
         toast.success(`Opportunity closed successfully (${selectedReason.label})`);
         setShowCloseConfirmation(false);
@@ -421,12 +449,12 @@ function OpportunitiesTab({
    */
   const filteredOpportunities = useMemo(() => {
     if (!opportunitiesData || !Array.isArray(opportunitiesData)) return [];
-    
+
     return opportunitiesData.filter(opp => {
       const matchesLPA = lpaFilter === '' || opp.lpa === lpaFilter;
       const matchesNCA = ncaFilter === '' || opp.nca === ncaFilter;
       const matchesStatus = statusFilter === '' || opp.status === statusFilter;
-      
+
       const searchLower = searchText.toLowerCase();
       const matchesSearch = (
         opp.title?.toLowerCase().includes(searchLower) ||
@@ -460,7 +488,7 @@ function OpportunitiesTab({
 
   if (loading && (!opportunitiesData || opportunitiesData.length === 0)) {
     return (
-      <div className="admin-loading"> 
+      <div className="admin-loading">
         <div className="loading-spinner"></div>
         <p>Loading opportunities...</p>
       </div>
@@ -471,19 +499,19 @@ function OpportunitiesTab({
 
   return (
     <div className="opportunities-tab">
-      <h2 className="tab-section-title">Opportunity Overview</h2> 
+      <h2 className="tab-section-title">Opportunity Overview</h2>
       {/* Statistics Cards */}
       <div className="stats-grid">
         <div className="stat-card">
-          <div className="stat-icon stat-icon-blue"> 
+          <div className="stat-icon stat-icon-blue">
             <Calendar size={24} />
           </div>
-          <div className="stat-details"> 
+          <div className="stat-details">
             <div className="stat-label">Active Opportunities</div>
             <div className="stat-value">{stats.active}</div>
           </div>
         </div>
-        
+
         <div className="stat-card">
           <div className="stat-icon stat-icon-green">
             <CheckCircle size={24} />
@@ -493,7 +521,7 @@ function OpportunitiesTab({
             <div className="stat-value">{stats.closed}</div>
           </div>
         </div>
-        
+
         <div className="stat-card">
           <div className="stat-icon stat-icon-purple">
             <Leaf size={24} />
@@ -503,9 +531,9 @@ function OpportunitiesTab({
             <div className="stat-value">{stats.totalBids}</div>
           </div>
         </div>
-        
+
         <div className="stat-card">
-          <div className="stat-icon stat-icon-red"> 
+          <div className="stat-icon stat-icon-red">
             <MapPin size={24} />
           </div>
           <div className="stat-details">
@@ -516,10 +544,10 @@ function OpportunitiesTab({
       </div>
 
       {/* Action Bar */}
-      <div className="opportunities-actions"> 
+      <div className="opportunities-actions">
         <button
           onClick={() => setShowCreateForm(true)}
-          className="btn btn-primary" 
+          className="btn btn-primary"
         >
           <Plus size={18} />
           Create Opportunity
@@ -527,7 +555,7 @@ function OpportunitiesTab({
       </div>
 
       {/* Filters */}
-      <div className="filter-bar"> 
+      <div className="filter-bar">
         <div className="search-input-group">
           <Search size={18} className="search-icon" />
           <input
@@ -541,50 +569,50 @@ function OpportunitiesTab({
 
         <div className="filter-group">
           <label htmlFor="filterLPA" className="filter-label">LPA:</label>
-          <select 
+          <select
             id="filterLPA"
-            value={lpaFilter} 
+            value={lpaFilter}
             onChange={(e) => setLpaFilter(e.target.value)}
             className="filter-select"
           >
-            <option value="">All LPAs</option> 
+            <option value="">All LPAs</option>
             {LPA_OPTIONS.map(lpa => (
               <option key={lpa} value={lpa}>{lpa}</option>
             ))}
           </select>
         </div>
-        
+
         <div className="filter-group">
           <label htmlFor="filterNCA" className="filter-label">NCA:</label>
-          <select 
+          <select
             id="filterNCA"
-            value={ncaFilter} 
+            value={ncaFilter}
             onChange={(e) => setNcaFilter(e.target.value)}
             className="filter-select"
           >
-            <option value="">All NCAs</option> 
+            <option value="">All NCAs</option>
             {NCA_OPTIONS.map(nca => (
               <option key={nca} value={nca}>{nca}</option>
             ))}
           </select>
         </div>
-        
+
         <div className="filter-group">
           <label htmlFor="filterStatus" className="filter-label">Status:</label>
-          <select 
+          <select
             id="filterStatus"
-            value={statusFilter} 
+            value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className="filter-select"
           >
-            <option value="">All Statuses</option> 
+            <option value="">All Statuses</option>
             <option value="active">Active</option>
             <option value="closed">Closed</option>
           </select>
         </div>
-        
-        {areFiltersApplied && ( 
-          <button 
+
+        {areFiltersApplied && (
+          <button
             onClick={clearFilters}
             className="btn btn-outline btn-sm clear-filter-btn"
           >
@@ -594,16 +622,16 @@ function OpportunitiesTab({
       </div>
 
       {/* Opportunities Table */}
-      <div className="table-container admin-table-container"> 
-        <table className="table admin-table"> 
+      <div className="table-container admin-table-container">
+        <table className="table admin-table">
           <thead>
             <tr>
-              <th>Actions</th> 
+              <th>Actions</th>
               <th>Title</th>
               <th>LPA</th>
               <th>NCA</th>
               <th>Status</th>
-              <th>Closure Date</th> {/* Updated heading */}
+              <th>Closure Date</th>
               <th>Reason for Close</th>
               <th>Bids</th>
               <th>Lowest Bid</th>
@@ -612,7 +640,7 @@ function OpportunitiesTab({
           <tbody>
             {filteredOpportunities.length === 0 ? (
               <tr>
-                <td colSpan="9" className="empty-state-cell"> 
+                <td colSpan="9" className="empty-state-cell">
                   No opportunities found matching your filters
                 </td>
               </tr>
@@ -620,7 +648,7 @@ function OpportunitiesTab({
               filteredOpportunities.map((opportunity) => {
                 const bidCount = getBidsForOpportunity(opportunity.id).length;
                 const lowestBid = getLowestBidAmount(opportunity.id);
-                
+
                 // Determine status badge color based on status string
                 const statusColorClass = opportunity.status === 'active' ? 'status-active' : 'status-closed';
 
@@ -631,22 +659,22 @@ function OpportunitiesTab({
 
                 return (
                   <tr key={opportunity.id}>
-                    <td className="admin-table-actions"> 
+                    <td className="admin-table-actions">
                       <button
                         onClick={() => handleViewBids(opportunity)}
-                        className="action-button view" 
+                        className="action-button view"
                         title="View Bids"
                       >
                         <Eye size={18} />
                       </button>
-                      
+
                       {opportunity.status === 'active' && (
                         <button
                           onClick={() => handleCloseOpportunity(opportunity.id)}
-                          className="action-button delete" 
+                          className="action-button delete"
                           title="Close Opportunity"
                         >
-                          <X size={18} /> 
+                          <X size={18} />
                         </button>
                       )}
                     </td>
@@ -659,7 +687,7 @@ function OpportunitiesTab({
                       </span>
                     </td>
                     <td>
-                      {displayDate ? formatDate(displayDate) : '-'} {/* Use displayDate */}
+                      {displayDate ? formatDate(displayDate) : '-'}
                     </td>
                     <td>{getDisplayCloseReason(opportunity)}</td>
                     <td>{bidCount}</td>
@@ -675,20 +703,20 @@ function OpportunitiesTab({
       {/* Create Form Modal */}
       {showCreateForm && (
         <div className="modal-overlay">
-          <div className="modal" style={{ maxWidth: '1000px', width: '90%' }}> 
+          <div className="modal" style={{ maxWidth: '1000px', width: '90%' }}>
             <div className="modal-header">
-              <h2 className="modal-title">Create New Opportunity</h2> 
+              <h2 className="modal-title">Create New Opportunity</h2>
               <button
                 onClick={() => setShowCreateForm(false)}
-                className="modal-close" 
+                className="modal-close"
               >
                 <X size={24} />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="modal-content opportunity-form"> 
+            <form onSubmit={handleSubmit(onSubmit)} className="modal-content opportunity-form">
               {/* Line 1: Title and Closing Date */}
-              <div className="form-grid form-grid-2"> 
+              <div className="form-grid form-grid-2">
                 <div className="form-group">
                   <label className="form-label">Title *</label>
                   <input
@@ -699,7 +727,7 @@ function OpportunitiesTab({
                   />
                   {errors.title && <span className="form-error">{errors.title.message}</span>}
                 </div>
-                
+
                 <div className="form-group">
                   <label className="form-label">Closing Date *</label>
                   <input
@@ -723,7 +751,7 @@ function OpportunitiesTab({
                   </select>
                   {errors.lpa && <span className="form-error">{errors.lpa.message}</span>}
                 </div>
-                
+
                 <div className="form-group">
                   <label className="form-label">NCA *</label>
                   <select {...register('nca')} className={`form-input ${errors.nca ? 'error' : ''}`}>
@@ -738,12 +766,12 @@ function OpportunitiesTab({
 
               {/* Line 3: Habitat Requirements heading */}
               <div className="habitat-section">
-                <h3 className="profile-section-title"><Leaf size={18} /> Habitat Requirements</h3> 
-                
+                <h3 className="profile-section-title"><Leaf size={18} /> Habitat Requirements</h3>
+
                 {/* Line 4+: Habitat requirements */}
                 {fields.map((field, index) => (
                   <div key={field.id} className="habitat-item">
-                    <div className="form-grid habitat-row"> 
+                    <div className="form-grid habitat-row">
                       <div className="form-group">
                         <label className="form-label">Broad Habitat *</label>
                         <select
@@ -756,27 +784,28 @@ function OpportunitiesTab({
                             <option key={habitat} value={habitat}>{habitat}</option>
                           ))}
                         </select>
-                        {errors.habitatRequirements?.[index]?.broadHabitat && 
+                        {errors.habitatRequirements?.[index]?.broadHabitat &&
                           <span className="form-error">{errors.habitatRequirements?.[index]?.broadHabitat?.message}</span>}
                       </div>
-                      
+
                       <div className="form-group">
                         <label className="form-label">Specific Habitat *</label>
                         <select
-                          {...register(`habitatRequirements.${index}.specificHabitat`)}
+                          value={watchedHabitats[index]?.specificHabitat || ''}
+                          onChange={(e) => handleSpecificHabitatChange(index, e.target.value)}
                           className={`form-input ${errors.habitatRequirements?.[index]?.specificHabitat ? 'error' : ''}`}
                           disabled={!watchedHabitats[index]?.broadHabitat}
                         >
                           <option value="">Select Specific Habitat</option>
-                          {watchedHabitats[index]?.broadHabitat && 
+                          {watchedHabitats[index]?.broadHabitat &&
                            HABITAT_MAPPING[watchedHabitats[index].broadHabitat]?.map(specific => (
                             <option key={specific} value={specific}>{specific}</option>
                           ))}
                         </select>
-                        {errors.habitatRequirements?.[index]?.specificHabitat && 
+                        {errors.habitatRequirements?.[index]?.specificHabitat &&
                           <span className="form-error">{errors.habitatRequirements?.[index]?.specificHabitat?.message}</span>}
                       </div>
-                      
+
                       <div className="form-group">
                         <label className="form-label">Units Needed *</label>
                         <input
@@ -784,18 +813,19 @@ function OpportunitiesTab({
                           step="0.01"
                           min="0.01"
                           {...register(`habitatRequirements.${index}.unitsRequired`)}
+                          onChange={(e) => handleUnitsRequiredChange(index, e.target.value)}
                           className={`form-input ${errors.habitatRequirements?.[index]?.unitsRequired ? 'error' : ''}`}
                         />
-                        {errors.habitatRequirements?.[index]?.unitsRequired && 
+                        {errors.habitatRequirements?.[index]?.unitsRequired &&
                           <span className="form-error">{errors.habitatRequirements?.[index]?.unitsRequired?.message}</span>}
                       </div>
-                      
-                      <div className="form-group remove-habitat-button-group"> 
+
+                      <div className="form-group remove-habitat-button-group">
                         <button
                           type="button"
                           onClick={() => remove(index)}
                           disabled={fields.length === 1}
-                          className="btn btn-danger btn-sm" 
+                          className="btn btn-danger btn-sm"
                         >
                           <X size={16} />
                         </button>
@@ -803,12 +833,12 @@ function OpportunitiesTab({
                     </div>
                   </div>
                 ))}
-                
+
                 <button
                   type="button"
                   onClick={() => append({ broadHabitat: '', specificHabitat: '', unitsRequired: '' })}
                   disabled={!isLastHabitatRowValid}
-                  className="btn btn-primary" 
+                  className="btn btn-primary"
                 >
                   <Plus size={16} />
                   Add Habitat Requirement
@@ -816,19 +846,19 @@ function OpportunitiesTab({
               </div>
 
               {/* Form Actions */}
-              <div className="modal-actions"> 
+              <div className="modal-actions">
                 <button
                   type="button"
                   onClick={() => setShowCreateForm(false)}
-                  className="btn btn-outline" 
+                  className="btn btn-outline"
                 >
                   Cancel
                 </button>
-                
+
                 <button
                   type="submit"
                   disabled={creating}
-                  className="btn btn-secondary" 
+                  className="btn btn-secondary"
                 >
                   {creating ? 'Creating...' : 'Create Opportunity'}
                 </button>
@@ -841,7 +871,7 @@ function OpportunitiesTab({
       {/* Bids Modal - FIXED to show proper bidder names and status */}
       {showBidsModal && selectedOpportunity && (
         <div className="modal-overlay">
-          <div className="modal user-bids-modal"> 
+          <div className="modal user-bids-modal">
             <div className="modal-header">
               <h2 className="modal-title">Bids for: {selectedOpportunity.title}</h2>
               <button
@@ -851,8 +881,8 @@ function OpportunitiesTab({
                 <X size={24} />
               </button>
             </div>
-            
-            <div className="modal-content"> 
+
+            <div className="modal-content">
               <div className="habitat-requirements-display">
                 <h3>Habitat Requirements:</h3>
                 <div>
@@ -863,14 +893,14 @@ function OpportunitiesTab({
                   )) || 'No habitat requirements specified'}
                 </div>
               </div>
-              
+
               <div className="bids-list">
                 {modalBids.length === 0 ? (
                   <p className="empty-state-text">No bids received for this opportunity</p>
                 ) : (
                   modalBids.map((bid) => {
                     // Use getBidStatus from bidHelpers, passing opportunitiesData
-                    const bidStatus = getBidStatus(bid, opportunitiesData); 
+                    const bidStatus = getBidStatus(bid, opportunitiesData);
                     // Determine status badge class based on status string from bidHelpers
                     let statusBadgeClass = '';
                     if (bidStatus === 'Active') statusBadgeClass = 'status-active';
@@ -878,13 +908,9 @@ function OpportunitiesTab({
                     else if (bidStatus === 'Not Selected' || bidStatus === 'Expired') statusBadgeClass = 'status-not-selected';
                     else if (bidStatus === 'Withdrawn') statusBadgeClass = 'status-withdrawn';
 
-                    // Determine the correct date to display based on opportunity status
-                    const displayDate = selectedOpportunity.status === 'closed' && selectedOpportunity.closedAt
-                      ? selectedOpportunity.closedAt
-                      : selectedOpportunity.closingDate;
 
                     return (
-                      <div key={bid.id} className="bid-item"> 
+                      <div key={bid.id} className="bid-item">
                         {/* Line 1: Name and Total Bid Value */}
                         <div className="bid-header-row">
                           <div className="bidder-info">
@@ -895,17 +921,17 @@ function OpportunitiesTab({
                               £{bid.bidAmount?.toLocaleString()}
                             </span>
                           </div>
-                          <span 
+                          <span
                             className={`status-badge ${statusBadgeClass}`}
                           >
                             {bidStatus}
                           </span>
                         </div>
-                        
+
                         {/* Additional Bid Details (Date Placed) */}
                         <div className="bid-meta-info">
                           <span>Placed: {formatDate(bid.createdAt)}</span>
-                          {selectedOpportunity && <span> | Closure Date: {formatDate(displayDate)}</span>} {/* Updated label and date source */}
+                          {selectedOpportunity && <span> | Closure Date: {formatDate(selectedOpportunity.status === 'closed' && selectedOpportunity.closedAt ? selectedOpportunity.closedAt : selectedOpportunity.closingDate)}</span>}
                         </div>
 
                         {/* Line 2+: Habitat details */}
@@ -942,7 +968,7 @@ function OpportunitiesTab({
                   })
                 )}
               </div>
-            </div> 
+            </div>
           </div>
         </div>
       )}
@@ -950,7 +976,7 @@ function OpportunitiesTab({
       {/* Bid Closure Confirmation Modal */}
       {showCloseConfirmation && (
         <div className="modal-overlay">
-          <div className="modal" style={{ maxWidth: '700px', width: '90%' }}> 
+          <div className="modal" style={{ maxWidth: '700px', width: '90%' }}>
             <div className="modal-header">
               <h2 className="modal-title">Close Opportunity</h2>
               <button
@@ -961,7 +987,7 @@ function OpportunitiesTab({
               </button>
             </div>
 
-            <div className="modal-content close-confirmation-content"> 
+            <div className="modal-content close-confirmation-content">
               <p>
                 Please select a reason for closing this opportunity:
               </p>
@@ -1020,7 +1046,7 @@ function OpportunitiesTab({
               <button
                 onClick={confirmCloseOpportunity}
                 disabled={!closeReason || creating}
-                className="btn btn-danger" 
+                className="btn btn-danger"
               >
                 {creating ? 'Closing...' : (
                   <>

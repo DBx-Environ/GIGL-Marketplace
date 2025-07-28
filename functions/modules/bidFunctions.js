@@ -1,11 +1,14 @@
-// functions/modules/bidFunctions.js - ENHANCED WITH WITHDRAWAL EMAIL NOTIFICATIONS
+// functions/modules/bidFunctions.js - LINT FIXES: JSDoc @return
 const admin = require("firebase-admin");
 const functions = require("firebase-functions");
 const {sendBrevoEmail} = require("./emailFunctions");
 
 /**
- * Triggered when a new bid is created
- * Sends confirmation email to the bidder AND notification to admin
+ * Triggered when a new bid is created.
+ * Sends confirmation email to the bidder AND notification to admin.
+ * @param {functions.firestore.DocumentSnapshot} snap - The snapshot of the new document.
+ * @param {functions.EventContext} context - The event context.
+ * @return {Promise<null>} A promise that resolves to null.
  */
 const onBidCreated = functions
   .region("europe-west2")
@@ -28,9 +31,12 @@ const onBidCreated = functions
   });
 
 /**
- * Triggered when an existing bid is updated
- * Sends update confirmation email to the bidder AND notification to admin
- * ALSO handles withdrawal notifications
+ * Triggered when an existing bid is updated.
+ * Sends update confirmation email to the bidder AND notification to admin.
+ * ALSO handles withdrawal notifications.
+ * @param {functions.firestore.DocumentSnapshotChange} change - The change object with before and after snapshots.
+ * @param {functions.EventContext} context - The event context.
+ * @return {Promise<null>} A promise that resolves to null.
  */
 const onBidUpdated = functions
   .region("europe-west2")
@@ -77,7 +83,11 @@ const onBidUpdated = functions
   });
 
 /**
- * Shared function to send bid notifications (for create, update, and withdraw)
+ * Shared function to send bid notifications (for create, update, and withdraw).
+ * @param {object} bidData - The data of the bid.
+ * @param {string} bidId - The ID of the bid.
+ * @param {"created"|"updated"|"withdrawn"} action - The type of action that triggered the notification.
+ * @return {Promise<void>}
  */
 async function sendBidNotifications(bidData, bidId, action) {
   try {
@@ -328,7 +338,13 @@ async function sendBidNotifications(bidData, bidId, action) {
 }
 
 /**
- * NEW: Send withdrawal-specific notifications
+ * Sends withdrawal-specific notifications to user and admin.
+ * @param {object} userData - The user's data.
+ * @param {object} opportunityData - The opportunity's data.
+ * @param {object} bidData - The bid's data.
+ * @param {string} bidId - The ID of the bid.
+ * @param {Date} actionDate - The date/time of the withdrawal action.
+ * @return {Promise<void>}
  */
 async function sendWithdrawalNotifications(userData, opportunityData, bidData, bidId, actionDate) {
   try {

@@ -1,10 +1,15 @@
-// functions/modules/emailFunctions.js - WORKING FRIDAY VERSION WITH AXIOS
+// functions/modules/emailFunctions.js - FINAL LINT FIX
 const admin = require("firebase-admin");
 const functions = require("firebase-functions");
 const axios = require("axios");
 
 /**
- * Shared utility function for sending emails via Brevo API using Axios
+ * Shared utility function for sending emails via Brevo API using Axios.
+ * @param {string} to - The recipient's email address.
+ * @param {string} subject - The subject line of the email.
+ * @param {string} htmlContent - The HTML content of the email body.
+ * @param {string} [type] - A category for the email, used for logging. Defaults to "general".
+ * @return {Promise<Object>} A promise that resolves with success status and message ID.
  */
 async function sendBrevoEmail(to, subject, htmlContent, type = "general") {
   try {
@@ -67,7 +72,14 @@ async function sendBrevoEmail(to, subject, htmlContent, type = "general") {
 }
 
 /**
- * Callable function to send notification emails
+ * Callable function to send notification emails.
+ * @param {object} data - The data passed to the callable function.
+ * @param {string} data.to - The recipient's email address.
+ * @param {string} data.subject - The subject line of the email.
+ * @param {string} data.htmlContent - The HTML content of the email body.
+ * @param {functions.https.CallableContext} context - The context of the callable function call.
+ * @return {Promise<Object>} A promise that resolves with success status and message ID.
+ * @throws {functions.https.HttpsError} If authentication fails, API key is missing, or internal error occurs.
  */
 const sendNotificationEmail = functions
   .region("europe-west2")
@@ -111,7 +123,11 @@ const sendNotificationEmail = functions
   });
 
 /**
- * Send welcome email when new user registers
+ * Sends a welcome email to a newly registered user.
+ * @param {string} userEmail - The email address of the new user.
+ * @param {string} firstName - The first name of the new user.
+ * @param {string} lastName - The last name of the new user.
+ * @return {Promise<Object>} A promise that resolves with the email sending result.
  */
 async function sendWelcomeEmail(userEmail, firstName, lastName) {
   const subject = "Welcome to GIGL Marketplace!";
@@ -120,7 +136,7 @@ async function sendWelcomeEmail(userEmail, firstName, lastName) {
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); padding: 20px; text-align: center;">
         <h1 style="color: white; margin: 0; font-size: 28px;">Welcome to GIGL!</h1>
-        <p style="color: #e8f5e8; margin: 10px 0 0 0; font-size: 14px;">Green Investment in Greater Lincolnshire</p>
+        <p style="color: #e8f5e8; margin: 10px 0 0 0; font-size: 14px;">GIGL Marketplace</p>
       </div>
       
       <div style="padding: 30px; background: #f9f9f9;">

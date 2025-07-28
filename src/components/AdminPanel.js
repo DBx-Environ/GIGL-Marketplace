@@ -8,7 +8,7 @@ import { toast } from 'react-toastify';
 
 // Import modular components
 import OpportunitiesTab from './admin/OpportunitiesTab';
-import UserManagementTab from './admin/UserManagementTab'; // ENABLED - Already imported
+import UserManagementTab from './admin/UserManagementTab'; 
 // import AnalyticsTab from './admin/AnalyticsTab';
 // import SettingsTab from './admin/SettingsTab';
 
@@ -20,7 +20,7 @@ import './AdminPanel.css';
  */
 function AdminPanel() {
   const { currentUser } = useAuth();
-  const [activeSection, setActiveSection] = useState('users'); // Set default to 'users' for testing
+  const [activeSection, setActiveSection] = useState('opportunities'); // Changed default to 'opportunities'
   const [opportunities, setOpportunities] = useState([]);
   const [bids, setBids] = useState([]);
   const [users, setUsers] = useState([]);
@@ -43,7 +43,7 @@ function AdminPanel() {
         });
         
         if (snapshot.empty) {
-          console.log('AdminPanel: No documents found in bidOpportunities collection'); // Corrected line
+          console.log('AdminPanel: No documents found in bidOpportunities collection');
           setOpportunities([]);
           return;
         }
@@ -71,7 +71,7 @@ function AdminPanel() {
         // setLoading(false); // Only set loading to false once all data is loaded
       },
       (error) => {
-        console.error('Error fetching opportunities:', error); // Corrected line
+        console.error('Error fetching opportunities:', error);
         console.error('Error details:', {
           code: error.code,
           message: error.message,
@@ -94,7 +94,7 @@ function AdminPanel() {
         // setLoading(false);
       },
       (error) => {
-        console.error('Error fetching bids:', error); // Corrected line
+        console.error('Error fetching bids:', error);
         toast.error('Failed to load bids');
         // setLoading(false);
       }
@@ -112,7 +112,7 @@ function AdminPanel() {
         setLoading(false); // Set loading to false here, as users is the last data set needed for this tab
       },
       (error) => {
-        console.error('Error fetching users:', error); // Corrected line
+        console.error('Error fetching users:', error);
         toast.error('Failed to load users');
         setLoading(false); // Ensure loading is false on error too
       }
@@ -167,7 +167,7 @@ function AdminPanel() {
           />
         );
       case 'users':
-        return ( // ENABLED UserManagementTab
+        return ( 
           <UserManagementTab
             usersData={users}
             bidsData={bids}

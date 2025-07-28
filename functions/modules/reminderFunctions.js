@@ -1,11 +1,13 @@
-// functions/modules/reminderFunctions.js
+// functions/modules/reminderFunctions.js - FINAL LINT FIX
 const admin = require("firebase-admin");
 const functions = require("firebase-functions");
 const {sendBrevoEmail} = require("./emailFunctions");
 
 /**
- * Scheduled function to send daily reminder emails
- * Runs daily at 9 AM GMT to remind users about opportunities closing within 24 hours
+ * Scheduled function to send daily reminder emails.
+ * Runs daily at 9 AM GMT to remind users about opportunities closing within 24 hours.
+ * @param {functions.EventContext} context - The event context.
+ * @return {Promise<object|null>} A promise that resolves with a summary of reminder sending results or null.
  */
 const sendBidReminders = functions
   .region("europe-west2")
@@ -132,7 +134,11 @@ const sendBidReminders = functions
   });
 
 /**
- * Send individual reminder email
+ * Sends an individual reminder email to a user about a closing opportunity.
+ * @param {object} userData - The data of the user to send the reminder to.
+ * @param {object} opportunityData - The data of the opportunity that is closing.
+ * @param {boolean} hasBid - True if the user has already placed a bid on this opportunity, false otherwise.
+ * @return {Promise<Object>} A promise that resolves with the email sending result.
  */
 async function sendReminderEmail(userData, opportunityData, hasBid) {
   try {

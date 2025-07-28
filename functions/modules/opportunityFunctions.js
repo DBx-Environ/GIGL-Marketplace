@@ -1,10 +1,18 @@
-// functions/modules/opportunityFunctions.js - ENHANCED WITH MANUAL CLOSE REASONS
+// functions/modules/opportunityFunctions.js - FINAL LINT FIX
 const admin = require("firebase-admin");
 const functions = require("firebase-functions");
 const {sendBrevoEmail} = require("./emailFunctions");
 
 /**
- * Manual close function called by admin - ENHANCED with reason handling
+ * Manual close function called by admin.
+ * Allows an authenticated admin user to close a bid opportunity with a specific reason.
+ * @param {object} data - The data passed to the callable function.
+ * @param {string} data.opportunityId - The ID of the opportunity to close.
+ * @param {string} data.reason - The reason for closing the opportunity ("error", "buyer_withdrawal", "early_close").
+ * @param {string} [data.reasonDetails=""] - Optional additional details about the closure.
+ * @param {functions.https.CallableContext} context - The context of the callable function call.
+ * @return {Promise<object>} A promise that resolves with the result of the closure.
+ * @throws {functions.https.HttpsError} If user is unauthenticated, unauthorized, or arguments are invalid.
  */
 const closeBidOpportunity = functions
   .region("europe-west2")
@@ -39,7 +47,10 @@ const closeBidOpportunity = functions
   });
 
 /**
- * Scheduled auto-close function - runs every 4 hours
+ * Scheduled auto-close function - runs every 4 hours.
+ * Automatically closes expired bid opportunities and sends notifications.
+ * @param {functions.EventContext} context - The event context.
+ * @return {Promise<object|null>} A promise that resolves with a summary of processed opportunities or null if no opportunities were found.
  */
 const autoCloseOpportunities = functions
   .region("europe-west2")
@@ -75,7 +86,9 @@ const autoCloseOpportunities = functions
   });
 
 /**
- * Core auto-close logic
+ * Core auto-close logic.
+ * Identifies and processes expired opportunities.
+ * @return {Promise<object>} A promise that resolves with a summary of the auto-close operation.
  */
 async function runAutoCloseLogic() {
   const nowUTC = new Date();
@@ -90,10 +103,21 @@ async function runAutoCloseLogic() {
 
   console.log(`Found ${activeOpportunitiesSnapshot.size} active opportunities`);
 
-  // Find expired opportunities
+  // Filter expired opportunities based on closingDate
   const expiredOpportunities = activeOpportunitiesSnapshot.docs.filter((doc) => {
     const data = doc.data();
-    const closingDate = new Date(data.closingDate);
+    // Ensure closingDate is a Date object for comparison, handling Firestore Timestamp or string
+    let closingDate;
+    if (data.closingDate && typeof data.closingDate.toDate === "function") {
+      closingDate = data.closingDate.toDate(); // Convert Firestore Timestamp to Date
+    } else if (typeof data.closingDate === "string") {
+      closingDate = new Date(data.closingDate); // Convert ISO string to Date
+    } else {
+      // Fallback for unexpected date format, treat as not expired or log error
+      console.warn(`Opportunity ${doc.id} has unexpected closingDate format:`, data.closingDate);
+      return false;
+    }
+
     const isExpired = nowUTC > closingDate;
 
     if (isExpired) {
@@ -119,7 +143,9 @@ async function runAutoCloseLogic() {
     try {
       console.log(`Processing expired opportunity: ${opportunityData.title}`);
 
-      const result = await closeOpportunityLogic(doc.id, "system");
+      const processResult = await closeOpportunityLogic(doc.id, "system");
+      // Explicitly use processResult to avoid no-unused-vars lint error
+      console.log(`Close logic result for ${opportunityData.title}:`, processResult);
 
       console.log(`Successfully closed: ${opportunityData.title}`);
 
@@ -178,8 +204,12 @@ async function runAutoCloseLogic() {
 }
 
 /**
- * Core logic for closing opportunities and determining winners
- * ENHANCED: Now handles manual close reasons
+ * Core logic for closing opportunities and determining winners.
+ * @param {string} opportunityId - The ID of the opportunity to close.
+ * @param {"system"|"manual"} closedBy - Indicates if the opportunity was closed by the system (auto-close) or manually by an admin.
+ * @param {string} [reason=null] - The specific reason for manual closure ("error", "buyer_withdrawal", "early_close").
+ * @param {string} [reasonDetails=""] - Optional additional details about the closure.
+ * @return {Promise<object>} A promise that resolves with the result of the closure, including winner information.
  */
 async function closeOpportunityLogic(opportunityId, closedBy, reason = null, reasonDetails = "") {
   console.log(`Closing opportunity ${opportunityId} (${closedBy}${reason ? ` - ${reason}` : ""})`);
@@ -234,7 +264,7 @@ async function closeOpportunityLogic(opportunityId, closedBy, reason = null, rea
 
     // Send appropriate notification based on close reason
     if (closedBy === "manual" && reason) {
-      await sendManualCloseNotification(opportunityData, [], reason, reasonDetails);
+      await sendManualCloseNotification(opportunityData, [], reason, reasonDetails); // Pass empty activeBids
     } else {
       await sendAdminNotification(opportunityData, null, "no_bids", closedBy);
     }
@@ -325,7 +355,14 @@ async function closeOpportunityLogic(opportunityId, closedBy, reason = null, rea
 }
 
 /**
- * NEW: Send manual close notifications with specific reasons
+ * Sends manual close notifications with specific reasons to relevant users and admin.
+ * @param {object} opportunityData - The data of the closed opportunity.
+ * @param {Array<admin.firestore.QueryDocumentSnapshot>} activeBids - An array of active bid documents (Firestore snapshots).
+ * @param {string} reason - The specific reason for manual closure ("error", "buyer_withdrawal", "early_close").
+ * @param {string} reasonDetails - Optional additional details about the closure.
+ * @param {object} [overallWinner=null] - The overall winner object, if any.
+ * @param {object} [habitatWinners={}] - An object mapping habitat types to their winners, if any.
+ * @return {Promise<void>}
  */
 async function sendManualCloseNotification(opportunityData, activeBids, reason, reasonDetails, overallWinner = null, habitatWinners = {}) {
   const reasonMessages = {
@@ -421,7 +458,12 @@ async function sendManualCloseNotification(opportunityData, activeBids, reason, 
 }
 
 /**
- * NEW: Send admin notification about manual close
+ * Sends an admin notification email about a manual opportunity closure.
+ * @param {object} opportunityData - The data of the closed opportunity.
+ * @param {number} bidCount - The number of active bids for the opportunity.
+ * @param {string} reason - The specific reason for manual closure ("error", "buyer_withdrawal", "early_close").
+ * @param {string} reasonDetails - Optional additional details about the closure.
+ * @return {Promise<void>}
  */
 async function sendAdminManualCloseNotification(opportunityData, bidCount, reason, reasonDetails) {
   const reasonLabels = {
@@ -466,7 +508,10 @@ async function sendAdminManualCloseNotification(opportunityData, bidCount, reaso
 }
 
 /**
- * Winner determination logic (unchanged)
+ * Determines the overall and habitat-specific winners for an opportunity.
+ * @param {Array<Object>} activeBids - An array of active bid documents (Firestore snapshots).
+ * @param {Object} habitatRequirements - An object mapping specific habitat types to their required units.
+ * @return {Promise<Object>} A promise that resolves with the overall and habitat winners.
  */
 async function determineWinners(activeBids, habitatRequirements) {
   const userBids = {};
@@ -572,7 +617,11 @@ async function determineWinners(activeBids, habitatRequirements) {
 }
 
 /**
- * Update bid documents with winner status (unchanged)
+ * Updates bid documents with their final winner status.
+ * @param {Array<admin.firestore.QueryDocumentSnapshot>} activeBids - An array of active bid documents (Firestore snapshots).
+ * @param {object|null} overallWinner - The overall winner object, or null if no overall winner.
+ * @param {object} habitatWinners - An object mapping specific habitat types to their winning bid details.
+ * @return {Promise<void>}
  */
 async function updateBidWinnerStatus(activeBids, overallWinner, habitatWinners) {
   const updatePromises = activeBids.map(async (bidDoc) => {
@@ -619,7 +668,13 @@ async function updateBidWinnerStatus(activeBids, overallWinner, habitatWinners) 
 }
 
 /**
- * Send notification emails to bidders (unchanged)
+ * Sends notification emails to bidders about the outcome of an opportunity.
+ * @param {Array<admin.firestore.QueryDocumentSnapshot>} activeBids - An array of active bid documents (Firestore snapshots).
+ * @param {object|null} overallWinner - The overall winner object, or null.
+ * @param {object} habitatWinners - An object mapping specific habitat types to their winning bid details.
+ * @param {object} opportunityData - The data of the closed opportunity.
+ * @param {"system"|"manual"} closedBy - Indicates if the opportunity was closed by the system or manually.
+ * @return {Promise<void>}
  */
 async function sendBidderNotifications(activeBids, overallWinner, habitatWinners, opportunityData, closedBy) {
   const uniqueUsers = [...new Set(activeBids.map((doc) => doc.data().userId))];
@@ -711,7 +766,12 @@ async function sendBidderNotifications(activeBids, overallWinner, habitatWinners
 }
 
 /**
- * Send admin notification email (unchanged)
+ * Sends an admin notification email about the outcome of an opportunity closure.
+ * @param {object} opportunityData - The data of the closed opportunity.
+ * @param {object|null} winnerData - An object containing overallWinner, habitatWinners, winnerType, and totalBids, or null if no bids.
+ * @param {string} type - The type of notification ("no_bids" or "opportunity_closed").
+ * @param {"system"|"manual"} closedBy - Indicates if the opportunity was closed by the system or manually.
+ * @return {Promise<void>}
  */
 async function sendAdminNotification(opportunityData, winnerData, type, closedBy) {
   try {
