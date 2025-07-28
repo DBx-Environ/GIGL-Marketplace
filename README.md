@@ -2,6 +2,10 @@
 
 A sophisticated biodiversity net gain trading platform connecting conservation with commerce across Greater Lincolnshire. Built for professional environmental consultancies to bid on habitat creation and management opportunities.
 
+
+
+v0.3 13:35 28 July 2025 
+
 ## **🌿 Features**
 
 ### **Complete Bidding System**
