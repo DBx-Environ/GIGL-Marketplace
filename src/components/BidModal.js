@@ -1,4 +1,4 @@
-// src/components/BidModal.js - FIXED VERSION WITH SCROLL PROTECTION_Delinetd lines 10,194
+// src/components/BidModal.js - FIXED VERSION WITH SCROLL PROTECTION
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -15,9 +15,6 @@ import {
   getLocationClassification,
   getAdjustedUnitsRequired,
 } from '../utils/locationHelpers';
-
-// Import formatDateTime
-import { formatDateTime } from '../utils/bidHelpers';
 
 // Validation schema that handles undefined pricePerUnit for no-bid
 const schema = yup.object().shape({

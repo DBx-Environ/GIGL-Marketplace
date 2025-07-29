@@ -1,7 +1,7 @@
 // src/components/BidDetailsModal.js
 import React from 'react';
 import { X } from 'lucide-react';
-import { formatDate, formatDateTime, getBidStatus } from '../utils/bidHelpers'; // Import getBidStatus
+import { formatDateTime, getBidStatus } from '../utils/bidHelpers'; // Import getBidStatus
 
 /**
  * BidDetailsModal component displays detailed information about a specific bid.
@@ -11,14 +11,10 @@ import { formatDate, formatDateTime, getBidStatus } from '../utils/bidHelpers'; 
  * @returns {JSX.Element} BidDetailsModal component.
  */
 function BidDetailsModal({ bid, opportunity, onClose }) {
-  // Calculate total effective buyer cost for display within the modal
-  let totalEffectiveBuyerCost = 0;
   // Added a safe check for 'bid' and 'bid.habitatBids' before iterating
   if (bid && Array.isArray(bid.habitatBids) && opportunity?.habitatRequirements) {
     bid.habitatBids.forEach(hb => {
       if (hb.bidType === 'bid') {
-        // Use the stored effectivePricePerUnitForBuyer and baseUnitsRequired
-        totalEffectiveBuyerCost += (hb.effectivePricePerUnitForBuyer || 0) * (hb.baseUnitsRequired || 0);
       }
     });
   }

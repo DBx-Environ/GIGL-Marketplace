@@ -10,7 +10,6 @@ import BidModal from './BidModal';
 import BidDetailsModal from './BidDetailsModal'; // Import the new BidDetailsModal
 // Import helper functions and options from the new utility file
 import {
-  formatDate,
   formatDateTime,
   getBidStatus,
   getLatestBidsPerOpportunity,
@@ -21,9 +20,6 @@ import {
   NCA_OPTIONS
 } from '../utils/bidHelpers';
 import { WFD_OPTIONS } from '../utils/wfdOptions'; // Import WFD_OPTIONS from utility file
-
-// Import location helper for display purposes in bid cards
-import { getLocationClassification } from '../utils/locationHelpers';
 
 const BID_STATUS_OPTIONS = [
   "Active", "Overall Winner", "Won 1 Habitat", "Won", "Not Selected", "Withdrawn", "Expired"
