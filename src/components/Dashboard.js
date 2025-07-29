@@ -3,9 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
-import { Edit, Plus, Filter, X } from 'lucide-react'; // Removed Droplet icon
+import { Edit, Plus, Filter, X, Eye } from 'lucide-react'; // Added Eye icon for view details
+import { toast } from 'react-toastify'; // Import toast
 import './Dashboard.css';
 import BidModal from './BidModal';
+import BidDetailsModal from './BidDetailsModal'; // Import the new BidDetailsModal
 // Import helper functions and options from the new utility file
 import {
   formatDate,
@@ -20,6 +22,9 @@ import {
 } from '../utils/bidHelpers';
 import { WFD_OPTIONS } from '../utils/wfdOptions'; // Import WFD_OPTIONS from utility file
 
+// Import location helper for display purposes in bid cards
+import { getLocationClassification } from '../utils/locationHelpers';
+
 const BID_STATUS_OPTIONS = [
   "Active", "Overall Winner", "Won 1 Habitat", "Won", "Not Selected", "Withdrawn", "Expired"
 ];
@@ -32,6 +37,8 @@ function Dashboard() {
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
   const [selectedBid, setSelectedBid] = useState(null);
   const [showBidModal, setShowBidModal] = useState(false);
+  const [showBidDetailsModal, setShowBidDetailsModal] = useState(false); // State for BidDetailsModal
+  const [selectedBidForDetails, setSelectedBidForDetails] = useState(null); // State for selected bid in details modal
 
   // Filter states
   const [showOpportunityFilters, setShowOpportunityFilters] = useState(false);
@@ -136,6 +143,19 @@ function Dashboard() {
     setShowBidModal(true);
   };
 
+  // Handle viewing bid details
+  const handleViewBidDetails = (bid) => {
+    const opportunity = bidOpportunities.find(opp => opp.id === bid.opportunityId);
+    if (!opportunity) {
+      console.error('Opportunity not found for bid details:', bid.id);
+      toast.error('Could not load opportunity details for this bid.');
+      return;
+    }
+    setSelectedBidForDetails(bid);
+    setSelectedOpportunity(opportunity); // Also set opportunity for the details modal
+    setShowBidDetailsModal(true);
+  };
+
   // FIXED: Check for ACTIVE (non-withdrawn) bids only
   const hasUserBidOnOpportunity = (opportunityId) => {
     return userBids.some(bid =>
@@ -197,42 +217,40 @@ function Dashboard() {
       const statusA = getBidStatus(a, bidOpportunities); // Pass opportunitiesData
       const statusB = getBidStatus(b, bidOpportunities); // Pass opportunitiesData
 
-      const getPriority = (bid, opportunity, status) => {
-        // 1. Active bids (HIGHEST PRIORITY - numbers 0-999)
+      const getSortableDate = (opportunity, status) => {
+        if (!opportunity) return new Date(0); // Very old date for bids without opportunity
+
         if (status === 'Active') {
-          if (!opportunity) return 999;
-          const closingDate = typeof opportunity.closingDate === 'string'
+          // For active bids, use closingDate for ascending sort
+          return typeof opportunity.closingDate === 'string'
             ? new Date(opportunity.closingDate)
             : opportunity.closingDate.toDate();
-          const now = new Date();
-          const daysUntilClose = Math.max(0, Math.floor((closingDate - now) / (1000 * 60 * 60 * 24)));
-          return daysUntilClose;
+        } else {
+          // For other statuses, use closedAt or closingDate for descending sort
+          const date = (opportunity.status === 'closed' && opportunity.closedAt)
+            ? (typeof opportunity.closedAt === 'string' ? new Date(opportunity.closedAt) : opportunity.closedAt.toDate())
+            : (typeof opportunity.closingDate === 'string' ? new Date(opportunity.closingDate) : opportunity.closingDate.toDate());
+          return date;
         }
-
-        // 2. Overall winners (priority 1000-1999)
-        if (status === 'Overall Winner' || status === 'Won') {
-          return 1000;
-        }
-
-        // 3. Habitat winners (priority 2000-2999)
-        if (status.includes('Won') && status.includes('Habitat')) {
-          return 2000;
-        }
-
-        // 4. Not selected (priority 3000-3999)
-        if (status === 'Not Selected' || status === 'Expired') {
-          return 3000;
-        }
-
-        // 5. Withdrawn bids (LOWEST PRIORITY - 4000+)
-        if (status === 'Withdrawn') {
-          return 4000;
-        }
-
-        return 3500;
       };
 
-      return getPriority(a, oppA, statusA) - getPriority(b, oppB, statusB);
+      const dateA = getSortableDate(oppA, statusA);
+      const dateB = getSortableDate(oppB, statusB);
+
+      // Primary sort: Active bids first
+      if (statusA === 'Active' && statusB !== 'Active') {
+        return -1; // A (Active) comes before B (Non-Active)
+      }
+      if (statusA !== 'Active' && statusB === 'Active') {
+        return 1; // B (Active) comes before A (Non-Active)
+      }
+
+      // Secondary sort:
+      if (statusA === 'Active' && statusB === 'Active') {
+        return dateA.getTime() - dateB.getTime(); // Active bids: ascending closure date
+      } else {
+        return dateB.getTime() - dateA.getTime(); // Other bids: descending closure date
+      }
     });
   };
 
@@ -258,19 +276,36 @@ function Dashboard() {
 
   return (
     <div className="dashboard-container">
-      <div className="dashboard-header">
-        <h1 className="dashboard-title">
+      <div className="dashboard-header"> {/* CSS handles color and width */}
+        <h1 className="dashboard-title" style={{ margin: '0 0 10px 0', fontSize: '2.5rem', fontWeight: 'bold' }}>
           Welcome, {userData?.firstName} {userData?.lastName}
         </h1>
-        <p className="dashboard-company">{userData?.company}</p>
+        {/* Replaced Company Name with Home LPA, Home NCA, Home WFD Catchment, centered and white text */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '30px', fontSize: '1.1em', color: 'white' }}>
+          {userData?.HomeLPA && (
+            <span>
+              <strong style={{ color: 'white' }}>Home LPA:</strong> {userData.HomeLPA}
+            </span>
+          )}
+          {userData?.HomeNCA && (
+            <span>
+              <strong style={{ color: 'white' }}>Home NCA:</strong> {userData.HomeNCA}
+            </span>
+          )}
+          {userData?.HomeWFD && (
+            <span>
+              <strong style={{ color: 'white' }}>Home WFD Catchment:</strong> {userData.HomeWFD}
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="dashboard-grid">
+      <div className="dashboard-grid"> {/* CSS handles width and centering */}
         {/* Current Bids Column */}
         <div className="dashboard-column">
           <div className="column-header">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 className="column-title">Current Bids</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <h2 className="column-title" style={{ margin: 0 }}>Current Bids</h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 {hasActiveBidFilters && (
                   <span style={{
@@ -305,6 +340,15 @@ function Dashboard() {
                 </button>
               </div>
             </div>
+            {/* New subheading for Current Bids */}
+            <p style={{ fontSize: '14px', color: '#6b7280', margin: '0' }}>
+              Active bids followed by other bids in descending order of closure
+              {hasActiveBidFilters && (
+                <span style={{ color: '#2563eb', fontWeight: '500' }}>
+                  {' '}• Showing filtered results
+                </span>
+              )}
+            </p>
           </div>
 
           {/* Bid Filters */}
@@ -392,6 +436,9 @@ function Dashboard() {
                             {opportunity?.lpa && opportunity?.nca && (
                               <span>{opportunity.lpa} • {opportunity.nca}</span>
                             )}
+                            {opportunity?.wfd && (
+                              <span style={{ marginLeft: '16px' }}>• WFD: {opportunity.wfd}</span>
+                            )}
                           </div>
                         </div>
                         <span className={`status-badge status-${status.toLowerCase().replace(/\s+/g, '-')}`}
@@ -400,58 +447,13 @@ function Dashboard() {
                         </span>
                       </div>
 
-                      {/* Condensed Habitat Bids Display */}
-                      {bid.habitatBids && bid.habitatBids.length > 0 && (
-                        <div style={{
-                          fontSize: '12px',
-                          color: '#374151',
-                          backgroundColor: '#f8fafc',
-                          padding: '8px',
-                          borderRadius: '4px',
-                          marginBottom: '8px',
-                          marginTop: '4px',
-                          lineHeight: '1.3'
-                        }}>
-                          <div style={{ fontWeight: '500', marginBottom: '4px' }}>Your Bids:</div>
-                          {bid.habitatBids.map((hb, index) => (
-                            <div key={index} style={{ marginBottom: index < bid.habitatBids.length - 1 ? '2px' : '0' }}>
-                              {hb.bidType === 'no-bid' ? (
-                                <span style={{ color: '#dc2626' }}>
-                                  {hb.specificHabitat}: No Bid
-                                </span>
-                              ) : (
-                                <span>
-                                  {hb.specificHabitat}: £{(hb.pricePerUnit || (hb.subtotal / hb.unitsRequired) || 0).toLocaleString()}/unit
-                                  <span style={{ color: '#059669', fontWeight: '500' }}>
-                                    {' '}(£{hb.subtotal?.toLocaleString()})
-                                  </span>
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                          <div style={{
-                            borderTop: '1px solid #e2e8f0',
-                            paddingTop: '4px',
-                            marginTop: '4px',
-                            fontWeight: '500',
-                            color: '#16a34a'
-                          }}>
-                            Total: £{bid.bidAmount?.toLocaleString()}
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="bid-card-footer">
+                      {/* Removed condensed habitat bids display from here */}
+                      {/* Added a button to view details in a modal */}
+                      <div className="bid-card-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid #eee' }}>
                         <div style={{ fontSize: '12px', flex: 1 }}>
-                          <span>
-                            Placed: {formatDate(bid.createdAt)}
-                            {bid.updatedAt && bid.updatedAt !== bid.createdAt && (
-                              <span> • Updated: {formatDate(bid.updatedAt)}</span>
-                            )}
-                            {opportunity &&
-                              <span> • Closure Date: {formatDateTime(opportunity.status === 'closed' && opportunity.closedAt ? opportunity.closedAt : opportunity.closingDate)}</span>
-                            }
-                          </span>
+                          {opportunity &&
+                            <span>Closure Date: {formatDateTime(opportunity.status === 'closed' && opportunity.closedAt ? opportunity.closedAt : opportunity.closingDate)}</span>
+                          }
                         </div>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                           {status === 'Active' && (
@@ -465,6 +467,15 @@ function Dashboard() {
                               <span style={{ marginLeft: '4px' }}>Edit</span>
                             </button>
                           )}
+                          <button
+                            onClick={() => handleViewBidDetails(bid)}
+                            className="bid-action-button view"
+                            title="View Bid Details"
+                            style={{ padding: '6px 8px', fontSize: '12px', backgroundColor: '#e0f7fa', color: '#007bff', border: '1px solid #00bcd4' }}
+                          >
+                            <Eye size={14} />
+                            <span style={{ marginLeft: '4px' }}>Details</span>
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -767,6 +778,17 @@ function Dashboard() {
             setShowBidModal(false);
             setSelectedOpportunity(null);
             setSelectedBid(null);
+          }}
+        />
+      )}
+      {showBidDetailsModal && selectedBidForDetails && selectedOpportunity && (
+        <BidDetailsModal
+          bid={selectedBidForDetails}
+          opportunity={selectedOpportunity}
+          onClose={() => {
+            setShowBidDetailsModal(false);
+            setSelectedBidForDetails(null);
+            setSelectedOpportunity(null);
           }}
         />
       )}

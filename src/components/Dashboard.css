@@ -24,10 +24,14 @@
   margin-bottom: 2rem;
   text-align: center;
   padding: 2rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  /* Override with specific green and ensure no gradient interferes */
+  background: #388E3C !important; /* Use !important to ensure override */
   border-radius: 16px;
   color: white;
-  box-shadow: 0 10px 40px -12px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 10px 40px -12px rgba(0, 0, 0, 0.3); /* Adjust shadow for green */
+  /* Ensure width matches dashboard-grid */
+  max-width: 1200px; /* Match dashboard-grid max-width */
+  margin: 0 auto 2rem auto; /* Center it */
 }
 
 .dashboard-title {

@@ -3,6 +3,10 @@ const admin = require("firebase-admin");
 const functions = require("firebase-functions");
 const {sendBrevoEmail} = require("./emailFunctions");
 
+// Removed inlined location helper functions and their lookup objects
+// as they are not used directly within this file.
+// The bid data with location adjustments is pre-calculated by bidFunctions.js.
+
 /**
  * Manual close function called by admin.
  * Allows an authenticated admin user to close a bid opportunity with a specific reason.
@@ -78,7 +82,7 @@ const autoCloseOpportunities = functions
           <p><strong>Error Time:</strong> ${new Date().toISOString()}</p>
           <p><strong>Error:</strong> ${error.message}</p>
         `,
-        "auto_close_error"
+        "auto_close_error",
       );
 
       return {success: false, error: error.message};
@@ -176,7 +180,7 @@ async function runAutoCloseLogic() {
     `<div style="margin: 8px 0; padding: 8px; background: ${r.success ? "#dcfce7" : "#fef2f2"}; border-radius: 4px;">
       <strong>${r.title}</strong><br>
       ${r.success ? "✅ Successfully closed" : "❌ Failed: " + r.error}
-    </div>`
+    </div>`,
   ).join("");
 
   await sendBrevoEmail(
@@ -192,7 +196,7 @@ async function runAutoCloseLogic() {
       <h3>Results:</h3>
       ${resultsHtml}
     `,
-    "auto_close_summary"
+    "auto_close_summary",
   );
 
   return {
@@ -233,6 +237,8 @@ async function closeOpportunityLogic(opportunityId, closedBy, reason = null, rea
     .get();
 
   // Filter out withdrawn bids
+  // IMPORTANT: The bids here should already have 'effectivePricePerUnitForBuyer' and 'adjustedUnitsToSupply'
+  // calculated by the onBidCreated/onBidUpdated triggers in bidFunctions.js.
   const activeBids = bidsSnapshot.docs.filter((doc) => {
     const bidData = doc.data();
     return bidData.status !== "withdrawn";
@@ -276,7 +282,7 @@ async function closeOpportunityLogic(opportunityId, closedBy, reason = null, rea
   }
 
   let overallWinner = null;
-  let habitatWinners = {};
+  const habitatWinners = {};
   let winnerBidId = null;
   let winnerUserId = null;
   let winnerType = null;
@@ -291,22 +297,23 @@ async function closeOpportunityLogic(opportunityId, closedBy, reason = null, rea
       });
     }
 
-    // Determine winners
-    const winnerResults = await determineWinners(activeBids, habitatRequirements);
+    // Determine winners using the new logic
+    const winnerResults = await determineWinners(activeBids, habitatRequirements, opportunityData); // Pass opportunityData
     overallWinner = winnerResults.overallWinner;
-    habitatWinners = winnerResults.habitatWinners;
+    Object.assign(habitatWinners, winnerResults.habitatWinners); // Assign to the const habitatWinners
 
     // Determine primary winner
     if (overallWinner) {
       winnerBidId = overallWinner.bidId;
       winnerUserId = overallWinner.userId;
       winnerType = "overall";
-      console.log(`Overall winner: ${winnerUserId} with bid £${overallWinner.totalBid.toLocaleString()}`);
+      console.log(`Overall winner: ${winnerUserId} with effective bid £${overallWinner.totalEffectiveBid.toLocaleString()}`);
     } else if (Object.keys(habitatWinners).length > 0) {
       const firstHabitat = Object.keys(habitatWinners)[0];
       winnerBidId = habitatWinners[firstHabitat].bidId;
       winnerUserId = habitatWinners[firstHabitat].userId;
       winnerType = "habitat";
+      // Fixed: Changed 'userId' to 'winnerUserId'
       console.log(`Habitat winner: ${winnerUserId} for ${Object.keys(habitatWinners).length} habitat(s)`);
     }
 
@@ -414,7 +421,7 @@ async function sendManualCloseNotification(opportunityData, activeBids, reason, 
               <p style="margin: 5px 0;"><strong>NCA:</strong> ${opportunityData.nca}</p>
             </div>
             
-            <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+            <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0;">
               <p style="margin: 0; color: #92400e; font-size: 16px; line-height: 1.6;">
                 ${userMessage}
               </p>
@@ -453,12 +460,11 @@ async function sendManualCloseNotification(opportunityData, activeBids, reason, 
     await sendBidderNotifications(activeBids, overallWinner, habitatWinners, opportunityData, "manual");
   }
 
-  // Send admin notification about manual close
   await sendAdminManualCloseNotification(opportunityData, activeBids.length, reason, reasonDetails);
 }
 
 /**
- * Sends an admin notification email about a manual opportunity closure.
+ * Sends an admin notification email about the outcome of a manual opportunity closure.
  * @param {object} opportunityData - The data of the closed opportunity.
  * @param {number} bidCount - The number of active bids for the opportunity.
  * @param {string} reason - The specific reason for manual closure ("error", "buyer_withdrawal", "early_close").
@@ -468,7 +474,7 @@ async function sendManualCloseNotification(opportunityData, activeBids, reason, 
 async function sendAdminManualCloseNotification(opportunityData, bidCount, reason, reasonDetails) {
   const reasonLabels = {
     "error": "Error in Opportunity Definition",
-    "withdrawn": "Buyer Withdrew Requirement",
+    "buyer_withdrawal": "Buyer Withdrew Requirement",
     "early_close": "Early Close by Buyer Request",
   };
 
@@ -511,83 +517,97 @@ async function sendAdminManualCloseNotification(opportunityData, bidCount, reaso
  * Determines the overall and habitat-specific winners for an opportunity.
  * @param {Array<Object>} activeBids - An array of active bid documents (Firestore snapshots).
  * @param {Object} habitatRequirements - An object mapping specific habitat types to their required units.
+ * @param {Object} opportunityData - The full opportunity data, including its habitat requirements.
  * @return {Promise<Object>} A promise that resolves with the overall and habitat winners.
  */
-async function determineWinners(activeBids, habitatRequirements) {
-  const userBids = {};
-  const habitatBids = {};
+async function determineWinners(activeBids, habitatRequirements, opportunityData) {
+  const userBidsProcessed = {}; // Stores bids grouped by user, with effective prices
+  const habitatBidsProcessed = {}; // Stores all bids for each habitat, with effective prices
 
-  // Process all bids
-  activeBids.forEach((bidDoc) => {
+  // Process all active bids to prepare for winner determination
+  for (const bidDoc of activeBids) {
     const bid = {id: bidDoc.id, ...bidDoc.data()};
     const userId = bid.userId;
 
-    if (!userBids[userId]) {
-      userBids[userId] = {
+    if (!userBidsProcessed[userId]) {
+      userBidsProcessed[userId] = {
         userId: userId,
         bids: [],
-        totalBid: 0,
+        totalEffectiveBid: 0, // New field for overall winner calculation
         habitatCoverage: {},
       };
     }
 
-    userBids[userId].bids.push(bid);
-    userBids[userId].totalBid += bid.bidAmount;
+    userBidsProcessed[userId].bids.push(bid);
 
-    // Process habitat-specific bids
+    // Process habitat-specific bids within this bid
     if (bid.habitatBids && Array.isArray(bid.habitatBids)) {
-      bid.habitatBids.forEach((habitatBid) => {
-        if (habitatBid.bidType === "no-bid") return;
+      for (const habitatBid of bid.habitatBids) {
+        if (habitatBid.bidType === "no-bid") continue;
 
         const habitatType = habitatBid.specificHabitat;
 
-        if (!habitatBids[habitatType]) {
-          habitatBids[habitatType] = [];
+        // Ensure effectivePricePerUnitForBuyer is present from bidFunctions.js processing
+        const effectivePricePerUnit = habitatBid.effectivePricePerUnitForBuyer;
+        const baseUnitsRequired = habitatBid.baseUnitsRequired; // Original units from opportunity
+
+        if (typeof effectivePricePerUnit === "undefined" || typeof baseUnitsRequired === "undefined") {
+          console.warn(`Bid ${bid.id} for habitat ${habitatType} is missing effectivePricePerUnitForBuyer or baseUnitsRequired. Skipping for winner determination.`);
+          continue;
         }
 
-        const pricePerUnit = habitatBid.pricePerUnit || (habitatBid.subtotal / habitatBid.unitsRequired);
+        // Calculate the effective cost for this specific habitat from the buyer's perspective
+        const effectiveHabitatCost = effectivePricePerUnit * baseUnitsRequired;
 
-        habitatBids[habitatType].push({
+        if (!habitatBidsProcessed[habitatType]) {
+          habitatBidsProcessed[habitatType] = [];
+        }
+
+        habitatBidsProcessed[habitatType].push({
           userId: userId,
           bidId: bid.id,
-          units: habitatBid.unitsRequired,
-          bidAmount: habitatBid.subtotal,
-          pricePerUnit: pricePerUnit,
+          effectivePricePerUnit: effectivePricePerUnit, // Use this for habitat winner
+          effectiveHabitatCost: effectiveHabitatCost, // Use this for overall winner sum
+          baseUnitsRequired: baseUnitsRequired, // Original units required by opportunity
+          adjustedUnitsToSupply: habitatBid.adjustedUnitsToSupply, // Units bidder must supply
+          bidderPricePerUnit: habitatBid.pricePerUnit, // Original bidder price
         });
 
-        // Track coverage
-        if (!userBids[userId].habitatCoverage[habitatType]) {
-          userBids[userId].habitatCoverage[habitatType] = {
-            totalUnits: 0,
-            totalCost: 0,
+        // Accumulate effective cost for overall winner calculation for this user
+        userBidsProcessed[userId].totalEffectiveBid += effectiveHabitatCost;
+
+        // Track coverage for overall winner (ensure all units are met)
+        if (!userBidsProcessed[userId].habitatCoverage[habitatType]) {
+          userBidsProcessed[userId].habitatCoverage[habitatType] = {
+            totalUnitsCovered: 0, // This should be the base units, as that's what the buyer needs
             bids: [],
           };
         }
-
-        userBids[userId].habitatCoverage[habitatType].totalUnits += habitatBid.unitsRequired;
-        userBids[userId].habitatCoverage[habitatType].totalCost += habitatBid.subtotal;
-        userBids[userId].habitatCoverage[habitatType].bids.push(habitatBid);
-      });
+        userBidsProcessed[userId].habitatCoverage[habitatType].totalUnitsCovered += baseUnitsRequired;
+        userBidsProcessed[userId].habitatCoverage[habitatType].bids.push(habitatBid); // Store original habitat bid for reference
+      }
     }
-  });
+  }
 
   // Find overall winner
   let overallWinner = null;
-  let lowestOverallBid = Infinity;
+  let lowestOverallEffectiveBid = Infinity;
 
-  Object.values(userBids).forEach((user) => {
+  Object.values(userBidsProcessed).forEach((user) => {
     const coversAllHabitats = Object.keys(habitatRequirements).every((requiredHabitat) => {
       const userCoverage = user.habitatCoverage[requiredHabitat];
-      return userCoverage && userCoverage.totalUnits >= habitatRequirements[requiredHabitat];
+      // Check if user's total units covered for this habitat meets or exceeds the opportunity's requirement
+      return userCoverage && userCoverage.totalUnitsCovered >= habitatRequirements[requiredHabitat];
     });
 
-    if (coversAllHabitats && user.totalBid < lowestOverallBid) {
-      lowestOverallBid = user.totalBid;
+    if (coversAllHabitats && user.totalEffectiveBid < lowestOverallEffectiveBid) {
+      lowestOverallEffectiveBid = user.totalEffectiveBid;
       overallWinner = {
         userId: user.userId,
-        bidId: user.bids[0].id,
-        totalBid: user.totalBid,
-        habitatCoverage: user.habitatCoverage,
+        // For overall winner, we can just pick one of their bid IDs, or indicate it's the user's overall bid
+        bidId: user.bids[0] ? user.bids[0].id : null, // Use the ID of one of their bids
+        totalEffectiveBid: user.totalEffectiveBid, // The total effective cost for the buyer
+        outerHTML: user.habitatCoverage,
       };
     }
   });
@@ -596,19 +616,23 @@ async function determineWinners(activeBids, habitatRequirements) {
   const habitatWinners = {};
 
   Object.keys(habitatRequirements).forEach((habitatType) => {
-    if (habitatBids[habitatType]) {
-      let lowestPricePerUnit = Infinity;
-      let winner = null;
+    if (habitatBidsProcessed[habitatType] && habitatBidsProcessed[habitatType].length > 0) {
+      // Sort bids for this habitat by effectivePricePerUnit (lowest is best)
+      const sortedHabitatBids = habitatBidsProcessed[habitatType].sort((a, b) => a.effectivePricePerUnit - b.effectivePricePerUnit);
 
-      habitatBids[habitatType].forEach((bid) => {
-        if (bid.pricePerUnit < lowestPricePerUnit) {
-          lowestPricePerUnit = bid.pricePerUnit;
-          winner = {...bid, totalCost: bid.bidAmount};
-        }
-      });
+      // The winner is the one with the lowest effective price per unit
+      const winner = sortedHabitatBids[0];
 
       if (winner) {
-        habitatWinners[habitatType] = winner;
+        habitatWinners[habitatType] = {
+          userId: winner.userId,
+          bidId: winner.bidId,
+          effectivePricePerUnit: winner.effectivePricePerUnit,
+          bidderPricePerUnit: winner.bidderPricePerUnit, // Store bidder's original price for context
+          baseUnitsRequired: winner.baseUnitsRequired,
+          adjustedUnitsToSupply: winner.adjustedUnitsToSupply,
+          totalEffectiveCost: winner.effectiveHabitatCost, // Total effective cost for this habitat from this winner
+        };
       }
     }
   });
@@ -631,7 +655,7 @@ async function updateBidWinnerStatus(activeBids, overallWinner, habitatWinners) 
 
     let isWinning = false;
     let winningType = null;
-    const habitatWins = {};
+    const habitatWins = {}; // Stores details for habitats won by *this specific bid*
 
     // Check overall winner
     if (overallWinner && overallWinner.userId === userId) {
@@ -639,19 +663,39 @@ async function updateBidWinnerStatus(activeBids, overallWinner, habitatWinners) 
       winningType = "overall";
     }
 
-    // Check habitat winners
-    Object.entries(habitatWinners).forEach(([habitatType, winner]) => {
-      if (winner.userId === userId) {
-        isWinning = true;
-        if (!winningType) winningType = "habitat";
+    // Check habitat winners for this specific bid
+    // Iterate through the habitat bids *within this bid document*
+    if (bidData.habitatBids && Array.isArray(bidData.habitatBids)) {
+      bidData.habitatBids.forEach((bidHabitat) => {
+        const specificHabitat = bidHabitat.specificHabitat;
+        if (habitatWinners[specificHabitat] && habitatWinners[specificHabitat].userId === userId && habitatWinners[specificHabitat].bidId === bidId) {
+          isWinning = true;
+          if (!winningType) winningType = "habitat"; // Set to habitat if not already overall
 
-        habitatWins[habitatType] = {
-          isWinner: true,
-          unitsWon: winner.units,
-          pricePerUnit: winner.pricePerUnit,
-        };
-      }
-    });
+          habitatWins[specificHabitat] = {
+            isWinner: true,
+            // These values are already stored on the bid's habitat object by bidFunctions.js
+            // We can just reference them or copy them over for clarity.
+            baseUnitsRequired: bidHabitat.baseUnitsRequired,
+            adjustedUnitsToSupply: bidHabitat.adjustedUnitsToSupply,
+            bidderPricePerUnit: bidHabitat.pricePerUnit,
+            effectivePricePerUnitForBuyer: bidHabitat.effectivePricePerUnitForBuyer,
+            subtotal: bidHabitat.subtotal, // The total amount for this habitat as per bidder's price and adjusted units
+          };
+        } else {
+          // Explicitly mark as not winning for this habitat if it's not a winner
+          habitatWins[specificHabitat] = {
+            isWinner: false,
+            baseUnitsRequired: bidHabitat.baseUnitsRequired,
+            adjustedUnitsToSupply: bidHabitat.adjustedUnitsToSupply,
+            bidderPricePerUnit: bidHabitat.pricePerUnit,
+            effectivePricePerUnitForBuyer: bidHabitat.effectivePricePerUnitForBuyer,
+            subtotal: bidHabitat.subtotal,
+          };
+        }
+      });
+    }
+
 
     // Update bid document
     await admin.firestore()
@@ -660,7 +704,7 @@ async function updateBidWinnerStatus(activeBids, overallWinner, habitatWinners) 
       .update({
         isWinning: isWinning,
         winningType: winningType,
-        habitatWins: habitatWins,
+        habitatWins: habitatWins, // Store detailed habitat win info
       });
   });
 
@@ -686,21 +730,34 @@ async function sendBidderNotifications(activeBids, overallWinner, habitatWinners
 
       const userData = userDoc.data();
 
-      // Determine winner status
+      // Determine winner status for this specific user
       let isOverallWinner = false;
-      const habitatWins = [];
+      const userHabitatWins = []; // Array to store habitat win details for this user
 
       if (overallWinner && overallWinner.userId === userId) {
         isOverallWinner = true;
       }
 
-      Object.entries(habitatWinners).forEach(([habitat, winner]) => {
-        if (winner.userId === userId) {
-          habitatWins.push({habitat, ...winner});
+      // Collect all habitat wins for this user across all their bids for this opportunity
+      activeBids.filter((bidDoc) => bidDoc.data().userId === userId).forEach((bidDoc) => {
+        const bidData = bidDoc.data();
+        if (bidData.habitatWins) {
+          Object.entries(bidData.habitatWins).forEach(([habitat, winDetail]) => {
+            if (winDetail.isWinner) {
+              userHabitatWins.push({
+                habitat: habitat,
+                bidderPricePerUnit: winDetail.bidderPricePerUnit,
+                effectivePricePerUnitForBuyer: winDetail.effectivePricePerUnitForBuyer,
+                baseUnitsRequired: winDetail.baseUnitsRequired,
+                adjustedUnitsToSupply: winDetail.adjustedUnitsToSupply,
+                subtotal: winDetail.subtotal,
+              });
+            }
+          });
         }
       });
 
-      const isWinner = isOverallWinner || habitatWins.length > 0;
+      const isWinner = isOverallWinner || userHabitatWins.length > 0;
 
       // Send appropriate email
       let subject; let htmlContent;
@@ -714,18 +771,26 @@ async function sendBidderNotifications(activeBids, overallWinner, habitatWinners
             </div>
             <div style="padding: 30px; background: #f9f9f9;">
               <h2>Congratulations ${userData.firstName} ${userData.lastName}!</h2>
-              <p>You won the entire contract for £${overallWinner.totalBid.toLocaleString()}!</p>
+              <p>You won the entire contract for <strong>${opportunityData.title}</strong>!</p>
+              <p>Your total effective bid for the buyer was: <strong>£${overallWinner.totalEffectiveBid.toLocaleString()}</strong></p>
               <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                <h3>Opportunity: ${opportunityData.title}</h3>
+                <h3>Opportunity Details</h3>
+                <p><strong>Title:</strong> ${opportunityData.title}</p>
                 <p><strong>LPA:</strong> ${opportunityData.lpa}</p>
                 <p><strong>NCA:</strong> ${opportunityData.nca}</p>
               </div>
+              <p>Further details regarding the next steps will be communicated shortly.</p>
             </div>
           </div>
         `;
-      } else if (habitatWins.length > 0) {
+      } else if (userHabitatWins.length > 0) {
         subject = `🌱 HABITAT WINNER - ${opportunityData.title}`;
-        const habitatList = habitatWins.map((hw) => `${hw.habitat}`).join(", ");
+        const habitatListHtml = userHabitatWins.map((hw) => `
+          <li style="margin-bottom: 5px;">
+            <strong>${hw.habitat}</strong>: Your bid was £${hw.bidderPricePerUnit.toFixed(2)}/unit (effective buyer price: £${hw.effectivePricePerUnitForBuyer.toFixed(2)}/unit) for ${hw.baseUnitsRequired} base units (you supply ${hw.adjustedUnitsToSupply.toFixed(2)} units). Total: £${hw.subtotal.toLocaleString()}
+          </li>
+        `).join("");
+
         htmlContent = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <div style="background: linear-gradient(135deg, #8BC34A 0%, #689F38 100%); padding: 20px; text-align: center;">
@@ -733,12 +798,17 @@ async function sendBidderNotifications(activeBids, overallWinner, habitatWinners
             </div>
             <div style="padding: 30px; background: #f9f9f9;">
               <h2>Congratulations ${userData.firstName} ${userData.lastName}!</h2>
-              <p>You won specific habitat types: ${habitatList}</p>
+              <p>You have won the following habitat types for opportunity: <strong>${opportunityData.title}</strong></p>
+              <ul style="list-style-type: none; padding: 0; margin: 15px 0;">
+                ${habitatListHtml}
+              </ul>
               <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                <h3>Opportunity: ${opportunityData.title}</h3>
+                <h3>Opportunity Details</h3>
+                <p><strong>Title:</strong> ${opportunityData.title}</p>
                 <p><strong>LPA:</strong> ${opportunityData.lpa}</p>
                 <p><strong>NCA:</strong> ${opportunityData.nca}</p>
               </div>
+              <p>Further details regarding the next steps will be communicated shortly.</p>
             </div>
           </div>
         `;
@@ -753,6 +823,12 @@ async function sendBidderNotifications(activeBids, overallWinner, habitatWinners
               <h2>Thank you ${userData.firstName} ${userData.lastName}!</h2>
               <p>Unfortunately, your bid for <strong>${opportunityData.title}</strong> was not selected.</p>
               <p>Keep bidding! New opportunities are posted regularly on the GIGL Marketplace.</p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="https://gigl-marketplace-v3.web.app/dashboard" 
+                   style="background-color: #2563eb; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                  View Dashboard
+                </a>
+              </div>
             </div>
           </div>
         `;
@@ -808,7 +884,7 @@ async function sendAdminNotification(opportunityData, winnerData, type, closedBy
           <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin: 10px 0;">
             <h3 style="color: #4CAF50; margin-top: 0;">🏆 Overall Winner</h3>
             <p><strong>User:</strong> ${winnerData.overallWinner.userId}</p>
-            <p><strong>Total Bid:</strong> £${winnerData.overallWinner.totalBid.toLocaleString()}</p>
+            <p><strong>Total Effective Bid (Buyer):</strong> £${winnerData.overallWinner.totalEffectiveBid.toLocaleString()}</p>
           </div>
         `;
       }
@@ -821,7 +897,7 @@ async function sendAdminNotification(opportunityData, winnerData, type, closedBy
 
         Object.entries(winnerData.habitatWinners).forEach(([habitat, winner]) => {
           winnerSummary += `
-            <p><strong>${habitat}:</strong> ${winner.userId} - £${winner.pricePerUnit.toLocaleString()}/unit</p>
+            <p><strong>${habitat}:</strong> ${winner.userId} - Bidder Price: £${winner.bidderPricePerUnit.toLocaleString()}/unit (Buyer Effective: £${winner.effectivePricePerUnit.toLocaleString()}/unit)</p>
           `;
         });
 
@@ -859,4 +935,8 @@ async function sendAdminNotification(opportunityData, winnerData, type, closedBy
 module.exports = {
   closeBidOpportunity,
   autoCloseOpportunities,
+  sendAdminNotification,
+  sendManualCloseNotification,
+  sendBidderNotifications,
+  sendAdminManualCloseNotification,
 };

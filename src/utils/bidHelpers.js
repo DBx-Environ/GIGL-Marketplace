@@ -250,7 +250,7 @@ export const isOpportunityClosingSoon = (closingDate) => {
 // Filter options from lookup data - CENTRALIZED HERE
 export const LPA_OPTIONS = [
   "North Lincolnshire", "North East Lincolnshire", "West Lindsey", "East Lindsey",
-  "City of Lincoln", "North Kesteven", "South Kesteven", "New Holland", 
+  "City of Lincoln", "North Kesteven", "South Kesteven", "South Holland", 
   "Boston", "Outside Greater Lincs"
 ];
 

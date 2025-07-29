@@ -692,3 +692,95 @@
     min-width: unset;
   }
 }
+
+/* Compact bid controls */
+.compact-bid-controls {
+  min-height: 40px; /* Ensures consistent height */
+}
+
+/* Updated bid type selection for inline layout */
+.compact-bid-controls .bid-type-selection {
+  margin: 0; /* Remove margin since we're using gap in parent */
+}
+
+.compact-bid-controls .bid-type-option {
+  padding: 0; /* Remove padding since these are simple radio buttons */
+  border: none; /* Remove border styling */
+  background: none; /* Remove background */
+  min-width: auto; /* Remove minimum width constraint */
+  justify-content: flex-start; /* Align to left */
+  gap: 0.5rem;
+}
+
+.compact-bid-controls .bid-type-option:hover {
+  border: none;
+  background: none;
+}
+
+.compact-bid-controls .bid-type-option:has(.bid-type-radio:checked) {
+  border: none;
+  background: none;
+}
+
+.compact-bid-controls .bid-type-option:has(.bid-type-radio:checked) .bid-type-label {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+/* Price input inline styling */
+.price-input-inline {
+  flex-shrink: 0; /* Prevent shrinking */
+}
+
+.price-input-inline input {
+  flex-shrink: 0;
+}
+
+/* No bid inline message */
+.no-bid-inline-message {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  background: #fff3e0;
+  border: 1px solid #ffcc02;
+  border-radius: 4px;
+}
+
+/* Responsive adjustments for compact layout */
+@media (max-width: 768px) {
+  .compact-bid-controls {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .compact-bid-controls .bid-type-selection {
+    width: 100%;
+  }
+  
+  .price-input-inline {
+    width: 100%;
+  }
+  
+  .price-input-inline input {
+    width: 100%;
+    max-width: none;
+  }
+  
+  .no-bid-inline-message {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .compact-bid-controls .bid-type-selection {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .price-input-inline {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+}

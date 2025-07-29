@@ -1,14 +1,142 @@
-// functions/modules/bidFunctions.js - LINT FIXES: JSDoc @return
+// functions/modules/bidFunctions.js - LINT FIXES: JSDoc @returns
 const admin = require("firebase-admin");
 const functions = require("firebase-functions");
 const {sendBrevoEmail} = require("./emailFunctions");
+
+// Inlining location helper functions for Cloud Function context to resolve import issues
+const LOCATION_NEIGHBOURS_LOOKUP = {
+  "North Lincolnshire": {LPANeighbours: ["North East Lincolnshire", "West Lindsey"], NCANeighbours: ["Humber Estuary", "Northern Lincolnshire Edge with Coversands", "Trent and Belvoir Vales"]},
+  "North East Lincolnshire": {LPANeighbours: ["North Lincolnshire", "East Lindsey", "West Lindsey"], NCANeighbours: ["Humberhead Levels", "Northern Lincolnshire Edge with Coversands", "Central Lincolnshire Vale", "Lincolnshire Wolds", "Lincolnshire Coast and Marshes"]},
+  "West Lindsey": {LPANeighbours: ["North East Lincolnshire", "City of Lincoln", "East Lindsey", "North Kesteven", "North Lincolnshire"], NCANeighbours: ["Lincolnshire Wolds", "Humber Estuary", "Central Lincolnshire Vale", "The Fens"]},
+  "East Lindsey": {LPANeighbours: ["West Lindsey", "North Kesteven", "Boston", "North East Lincolnshire"], NCANeighbours: ["Lincolnshire Coast and Marshes", "Central Lincolnshire Vale", "Humber Estuary"]},
+  "City of Lincoln": {LPANeighbours: ["North Kesteven", "West Lindsey"], NCANeighbours: ["Lincolnshire Wolds", "The Fens", "Lincolnshire Coast and Marshes", "Humber Estuary", "Northern Lincolnshire Edge with Coversands"]},
+  "North Kesteven": {LPANeighbours: ["City of Lincoln", "South Holland", "South Kesteven", "Boston", "East Lindsey", "West Lindsey"], NCANeighbours: ["Humber Estuary", "Humberhead Levels", "Trent and Belvoir Vales", "Central Lincolnshire Vale", "Southern Lincolnshire Edge"]},
+  "South Kesteven": {LPANeighbours: ["North Kesteven", "Boston", "South Holland"], NCANeighbours: ["Kesteven Uplands", "Southern Lincolnshire Edge", "Central Lincolnshire Vale", "Lincolnshire Coast and Marshes"]},
+  "South Holland": {LPANeighbours: ["South Kesteven", "North Kesteven", "Boston"], NCANeighbours: ["Northern Lincolnshire Edge with Coversands", "Trent and Belvoir Vales", "The Fens", "Kesteven Uplands"]},
+  "Boston": {LPANeighbours: ["South Holland", "North Kesteven", "East Lindsey"], NCANeighbours: ["Kesteven Uplands", "Northern Lincolnshire Edge with Coversands", "Humberhead Levels", "Southern Lincolnshire Edge"]},
+  "Outside Greater Lincs": {LPANeighbours: [], NCANeighbours: ["The Fens", "Southern Lincolnshire Edge", "Trent and Belvoir Vales", "Kesteven Uplands"]},
+};
+
+const UNIT_MULTIPLIERS = {
+  within: 1,
+  neighbour: 1.33333333,
+  outside: 2,
+};
+
+const PRICE_MULTIPLIERS_FOR_BUYER = {
+  within: 1,
+  neighbour: 1.33333333,
+  outside: 2,
+};
+
+/**
+ * Determines the location classification of a user's bid relative to an opportunity.
+ * @param {object} userData - The user's profile data (e.g., {HomeLPA, HomeNCA, HomeWFD}).
+ * @param {object} opportunityData - The opportunity's data (e.g., {lpa, nca, wfd}).
+ * @param {string} broadHabitat - The broad habitat type for the specific bid (e.g., "Watercourse", "Grassland").
+ * @return {"within" | "neighbour" | "outside"} The classification of the user's location relative to the opportunity.
+ */
+function getLocationClassification(userData, opportunityData, broadHabitat) {
+  const userHomeLPA = userData?.HomeLPA;
+  const userHomeNCA = userData?.HomeNCA;
+  const userHomeWFD = userData?.HomeWFD;
+
+  const opportunityLPA = opportunityData?.lpa;
+  const opportunityNCA = opportunityData?.nca;
+  const opportunityWFD = opportunityData?.wfd;
+
+  if (broadHabitat === "Watercourse") {
+    if (userHomeWFD && opportunityWFD && userHomeWFD === opportunityWFD) {
+      return "within";
+    }
+    return "outside";
+  }
+
+  if ((userHomeLPA && opportunityLPA && userHomeLPA === opportunityLPA) ||
+      (userHomeNCA && opportunityNCA && userHomeNCA === opportunityNCA)) {
+    return "within";
+  }
+
+  const userLpaNeighbours = LOCATION_NEIGHBOURS_LOOKUP[userHomeLPA]?.LPANeighbours || [];
+  const userNcaNeighbours = LOCATION_NEIGHBOURS_LOOKUP[userHomeNCA]?.NCANeighbours || [];
+
+  if ((opportunityLPA && userLpaNeighbours.includes(opportunityLPA)) ||
+      (opportunityNCA && userNcaNeighbours.includes(opportunityNCA))) {
+    return "neighbour";
+  }
+
+  return "outside";
+}
+
+/**
+ * Calculates the adjusted units required for a bid based on location classification.
+ * This is the amount of units the *bidder* needs to supply to meet the buyer's requirement.
+ * @param {number} baseUnitsRequired - The base units required by the opportunity.
+ * @param {"within" | "neighbour" | "outside"} classification - The location classification.
+ * @return {number} The adjusted units required.
+ */
+function getAdjustedUnitsRequired(baseUnitsRequired, classification) {
+  const multiplier = UNIT_MULTIPLIERS[classification] || UNIT_MULTIPLIERS.outside;
+  return baseUnitsRequired * multiplier;
+}
+
+/**
+ * Calculates the equivalent price per unit from the buyer's perspective.
+ * This is the effective price the buyer pays per 'actual' unit, considering the location adjustment.
+ * A lower effective price is better for the buyer.
+ * @param {number} pricePerUnit - The bidder's stated price per unit.
+ * @param {"within" | "neighbour" | "outside"} classification - The location classification.
+ * @return {number} The equivalent price per unit from the buyer's perspective.
+ */
+function getEquivalentPricePerUnitForBuyer(pricePerUnit, classification) {
+  const multiplier = PRICE_MULTIPLIERS_FOR_BUYER[classification] || PRICE_MULTIPLIERS_FOR_BUYER.outside;
+  return pricePerUnit * multiplier;
+}
+
+/**
+ * Processes a single habitat bid to include location classification and adjusted values.
+ * This function is intended to be used when a bid is created or updated.
+ * @param {object} habitatBid - The individual habitat bid object from the form.
+ * @param {object} opportunityHabitatRequirement - The corresponding habitat requirement from the opportunity.
+ * @param {object} userData - The user's profile data.
+ * @param {object} opportunityData - The full opportunity data.
+ * @return {object} The processed habitat bid with new fields.
+ */
+function getAdjustedBidDetailsForHabitat(habitatBid, opportunityHabitatRequirement, userData, opportunityData) {
+  const classification = getLocationClassification(
+    userData,
+    opportunityData,
+    opportunityHabitatRequirement.broadHabitat,
+  );
+
+  const baseUnitsRequired = opportunityHabitatRequirement.unitsRequired;
+  const bidderPricePerUnit = parseFloat(habitatBid.pricePerUnit);
+
+  // Calculate units the bidder needs to supply
+  const adjustedUnitsToSupply = getAdjustedUnitsRequired(baseUnitsRequired, classification);
+
+  // Calculate the effective price per unit for the buyer
+  const effectivePricePerUnitForBuyer = getEquivalentPricePerUnitForBuyer(bidderPricePerUnit, classification);
+
+  return {
+    ...habitatBid,
+    locationClassification: classification,
+    baseUnitsRequired: baseUnitsRequired, // Store original units required by opportunity
+    adjustedUnitsToSupply: adjustedUnitsToSupply, // Units bidder must supply
+    effectivePricePerUnitForBuyer: effectivePricePerUnitForBuyer, // Price from buyer's perspective
+    // Recalculate subtotal based on adjusted units to supply * bidder's price per unit
+    // This is the total amount the bidder will charge for this habitat
+    subtotal: bidderPricePerUnit * adjustedUnitsToSupply,
+  };
+}
+
 
 /**
  * Triggered when a new bid is created.
  * Sends confirmation email to the bidder AND notification to admin.
  * @param {functions.firestore.DocumentSnapshot} snap - The snapshot of the new document.
  * @param {functions.EventContext} context - The event context.
- * @return {Promise<null>} A promise that resolves to null.
+ * @returns {Promise<null>} A promise that resolves to null.
  */
 const onBidCreated = functions
   .region("europe-west2")
@@ -21,6 +149,7 @@ const onBidCreated = functions
 
       console.log(`📝 Processing new bid: ${bidId} for opportunity: ${bidData.opportunityId}`);
 
+      // Call the shared notification function which now also handles data processing
       await sendBidNotifications(bidData, bidId, "created");
 
       return null;
@@ -36,7 +165,7 @@ const onBidCreated = functions
  * ALSO handles withdrawal notifications.
  * @param {functions.firestore.DocumentSnapshotChange} change - The change object with before and after snapshots.
  * @param {functions.EventContext} context - The event context.
- * @return {Promise<null>} A promise that resolves to null.
+ * @returns {Promise<null>} A promise that resolves to null.
  */
 const onBidUpdated = functions
   .region("europe-west2")
@@ -51,18 +180,21 @@ const onBidUpdated = functions
       // Check if bid was withdrawn
       if (beforeData.status !== "withdrawn" && afterData.status === "withdrawn") {
         console.log(`📝 Bid ${bidId} withdrawn - sending withdrawal notifications`);
-        await sendBidNotifications(afterData, bidId, "withdrawn");
+        await sendWithdrawalNotifications(afterData, bidId, "withdrawn");
         return null;
       }
 
       // Check if this is a winner status update (from opportunity closing)
+      // We don't want to re-process location data if it's just a winner update
       if (beforeData.isWinning !== afterData.isWinning ||
-          beforeData.winningType !== afterData.winningType) {
+          beforeData.winningType !== afterData.winningType ||
+          JSON.stringify(beforeData.habitatWins) !== JSON.stringify(afterData.habitatWins)) {
         console.log(`📝 Bid ${bidId} winner status updated - no update notification sent`);
         return null;
       }
 
       // Check if bid amount or habitat bids actually changed (normal updates)
+      // This also covers changes to location-adjusted values, as they modify habitatBids
       const bidAmountChanged = beforeData.bidAmount !== afterData.bidAmount;
       const habitatBidsChanged = JSON.stringify(beforeData.habitatBids) !== JSON.stringify(afterData.habitatBids);
 
@@ -73,6 +205,7 @@ const onBidUpdated = functions
 
       console.log(`📝 Processing bid update: ${bidId} for opportunity: ${afterData.opportunityId}`);
 
+      // Call the shared notification function which now also handles data processing
       await sendBidNotifications(afterData, bidId, "updated");
 
       return null;
@@ -84,38 +217,119 @@ const onBidUpdated = functions
 
 /**
  * Shared function to send bid notifications (for create, update, and withdraw).
- * @param {object} bidData - The data of the bid.
+ * This function now also processes and updates the bid document with location-adjusted values.
+ * @param {object} originalBidData - The original data of the bid from the snapshot.
  * @param {string} bidId - The ID of the bid.
  * @param {"created"|"updated"|"withdrawn"} action - The type of action that triggered the notification.
  * @return {Promise<void>}
  */
-async function sendBidNotifications(bidData, bidId, action) {
+async function sendBidNotifications(originalBidData, bidId, action) {
   try {
     // Get user data
     const userDoc = await admin.firestore()
       .collection("users")
-      .doc(bidData.userId)
+      .doc(originalBidData.userId)
       .get();
 
     if (!userDoc.exists) {
-      console.error(`User ${bidData.userId} not found`);
+      console.error(`User ${originalBidData.userId} not found`);
       return;
     }
-
     const userData = userDoc.data();
 
     // Get opportunity data
     const opportunityDoc = await admin.firestore()
       .collection("bidOpportunities")
-      .doc(bidData.opportunityId)
+      .doc(originalBidData.opportunityId)
       .get();
 
     if (!opportunityDoc.exists) {
-      console.error(`Opportunity ${bidData.opportunityId} not found`);
+      console.error(`Opportunity ${originalBidData.opportunityId} not found`);
+      return;
+    }
+    const opportunityData = opportunityDoc.data();
+
+    // Handle withdrawal notifications differently
+    if (action === "withdrawn") {
+      await sendWithdrawalNotifications(userData, opportunityData, originalBidData, bidId, originalBidData.updatedAt.toDate());
       return;
     }
 
-    const opportunityData = opportunityDoc.data();
+    // --- NEW LOGIC: Process habitat bids with location adjustments ---
+    const processedHabitatBids = [];
+    let newTotalBidAmount = 0;
+
+    if (originalBidData.habitatBids && Array.isArray(originalBidData.habitatBids)) {
+      for (const originalHabitatBid of originalBidData.habitatBids) {
+        // Find the corresponding habitat requirement in the opportunity
+        const opportunityHabitatRequirement = opportunityData.habitatRequirements.find(
+          (req) => req.specificHabitat === originalHabitatBid.specificHabitat,
+        );
+
+        if (!opportunityHabitatRequirement) {
+          console.warn(`Habitat requirement for ${originalHabitatBid.specificHabitat} not found in opportunity ${opportunityData.title}. Skipping adjustment.`);
+          processedHabitatBids.push(originalHabitatBid); // Keep original if requirement not found
+          if (originalHabitatBid.bidType === "bid") {
+            newTotalBidAmount += originalHabitatBid.subtotal;
+          }
+          continue;
+        }
+
+        if (originalHabitatBid.bidType === "no-bid") {
+          // For 'no-bid', just copy it over, no price/unit or units adjustment needed
+          const classification = getLocationClassification(userData, opportunityData, opportunityHabitatRequirement.broadHabitat);
+          processedHabitatBids.push({
+            ...originalHabitatBid,
+            locationClassification: classification, // Store classification
+            baseUnitsRequired: opportunityHabitatRequirement.unitsRequired, // Store original units
+            adjustedUnitsToSupply: opportunityHabitatRequirement.unitsRequired, // No adjustment for no-bid
+            pricePerUnit: 0,
+            effectivePricePerUnitForBuyer: 0, // No effective price for no-bid
+            subtotal: 0,
+          });
+        } else {
+          // For actual bids, apply the location adjustment logic
+          const adjustedBid = getAdjustedBidDetailsForHabitat(
+            originalHabitatBid,
+            opportunityHabitatRequirement,
+            userData,
+            opportunityData,
+          );
+          processedHabitatBids.push(adjustedBid);
+          newTotalBidAmount += adjustedBid.subtotal;
+        }
+      }
+    }
+
+    // Prepare the updated bid data to be saved to Firestore
+    const updatedBidDataForFirestore = {
+      bidAmount: newTotalBidAmount,
+      habitatBids: processedHabitatBids,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      // Add other fields that might be needed, but ensure they are not overwritten
+      // if they are not meant to be updated by this function.
+      // For a new bid, createdAt will be set by onCreate trigger.
+      // For an update, it's already there.
+    };
+
+    // If it's a new bid, also set userId, opportunityId, status, createdAt
+    if (action === "created") {
+      Object.assign(updatedBidDataForFirestore, {
+        userId: originalBidData.userId,
+        opportunityId: originalBidData.opportunityId,
+        status: "active", // Ensure status is set
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        isWinning: false, // Default for new bids
+      });
+    }
+
+    // Update the bid document in Firestore with the new calculated values
+    await admin.firestore().collection("bids").doc(bidId).set(updatedBidDataForFirestore, {merge: true});
+    console.log(`✅ Bid ${bidId} updated in Firestore with location adjustments.`);
+
+    // Fetch the *updated* bid data from Firestore for email sending
+    const updatedBidDoc = await admin.firestore().collection("bids").doc(bidId).get();
+    const bidDataForEmail = updatedBidDoc.data();
 
     // Format dates safely
     let closingDate;
@@ -130,7 +344,7 @@ async function sendBidNotifications(bidData, bidId, action) {
     }
 
     let actionDate;
-    const dateField = action === "created" ? bidData.createdAt : bidData.updatedAt;
+    const dateField = action === "created" ? bidDataForEmail.createdAt : bidDataForEmail.updatedAt;
     if (dateField?.toDate) {
       actionDate = dateField.toDate();
     } else if (dateField instanceof Date) {
@@ -141,16 +355,10 @@ async function sendBidNotifications(bidData, bidId, action) {
       actionDate = new Date();
     }
 
-    // Handle withdrawal notifications differently
-    if (action === "withdrawn") {
-      await sendWithdrawalNotifications(userData, opportunityData, bidData, bidId, actionDate);
-      return;
-    }
-
     // Create habitat breakdown HTML for user email
     let habitatBreakdownHtml = "";
-    if (bidData.habitatBids && bidData.habitatBids.length > 0) {
-      const habitatItems = bidData.habitatBids.map((hb) => {
+    if (bidDataForEmail.habitatBids && bidDataForEmail.habitatBids.length > 0) {
+      const habitatItems = bidDataForEmail.habitatBids.map((hb) => {
         if (hb.bidType === "no-bid") {
           return `
             <div style="background: #fff2f2; padding: 10px; margin: 5px 0; border-radius: 4px; border-left: 3px solid #dc2626;">
@@ -159,11 +367,21 @@ async function sendBidNotifications(bidData, bidId, action) {
             </div>
           `;
         } else {
-          const pricePerUnit = hb.pricePerUnit || (hb.subtotal / hb.unitsRequired);
+          // Display adjusted units and equivalent price for user's awareness
+          const pricePerUnit = hb.pricePerUnit || (hb.subtotal / hb.unitsRequired); // Bidder's stated price
+          const adjustedUnits = hb.adjustedUnitsToSupply || hb.unitsRequired; // Units bidder must supply
+          const effectivePrice = hb.effectivePricePerUnitForBuyer || pricePerUnit; // Buyer's effective price
+
           return `
             <div style="background: #f5f5f5; padding: 10px; margin: 5px 0; border-radius: 4px; border-left: 3px solid #16a34a;">
               <p style="margin: 2px 0; font-size: 14px;"><strong>${hb.specificHabitat}</strong></p>
-              <p style="margin: 2px 0; font-size: 13px; color: #666;">${hb.unitsRequired} units at £${pricePerUnit.toFixed(2)}/unit = £${hb.subtotal.toLocaleString()}</p>
+              <p style="margin: 2px 0; font-size: 13px; color: #666;">
+                Your bid: £${pricePerUnit.toFixed(2)}/unit for ${hb.baseUnitsRequired} base units<br>
+                Location Classification: <strong>${hb.locationClassification.toUpperCase()}</strong><br>
+                You must supply: <strong>${adjustedUnits.toFixed(2)} units</strong><br>
+                Buyer's equivalent price: <strong>£${effectivePrice.toFixed(2)}/unit</strong><br>
+                Total for this habitat: <strong>£${hb.subtotal.toLocaleString()}</strong>
+              </p>
             </div>
           `;
         }
@@ -204,7 +422,7 @@ async function sendBidNotifications(bidData, bidId, action) {
           
           <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2196F3;">
             <h3 style="color: #2196F3; margin-top: 0;">Your Bid Details</h3>
-            <p style="margin: 5px 0;"><strong>Total Bid Amount:</strong> £${bidData.bidAmount.toLocaleString()}</p>
+            <p style="margin: 5px 0;"><strong>Total Bid Amount:</strong> £${bidDataForEmail.bidAmount.toLocaleString()}</p>
             <p style="margin: 5px 0;"><strong>Bid ID:</strong> ${bidId}</p>
             <p style="margin: 5px 0;"><strong>${actionPastTense}:</strong> ${actionDate.toLocaleString("en-GB")}</p>
             ${habitatBreakdownHtml}
@@ -242,8 +460,8 @@ async function sendBidNotifications(bidData, bidId, action) {
 
     // Create admin habitat breakdown table
     let adminHabitatBreakdown = "";
-    if (bidData.habitatBids && bidData.habitatBids.length > 0) {
-      const adminHabitatItems = bidData.habitatBids.map((hb) => {
+    if (bidDataForEmail.habitatBids && bidDataForEmail.habitatBids.length > 0) {
+      const adminHabitatItems = bidDataForEmail.habitatBids.map((hb) => {
         if (hb.bidType === "no-bid") {
           return `
             <tr style="background: #fff2f2;">
@@ -251,15 +469,23 @@ async function sendBidNotifications(bidData, bidId, action) {
               <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: #dc2626; font-style: italic;">No Bid</td>
               <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right; color: #dc2626;">—</td>
               <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right; color: #dc2626;">—</td>
+              <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right; color: #dc2626;">—</td>
+              <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right; color: #dc2626;">—</td>
             </tr>
           `;
         } else {
-          const pricePerUnit = hb.pricePerUnit || (hb.subtotal / hb.unitsRequired);
+          const pricePerUnit = hb.pricePerUnit || (hb.subtotal / hb.unitsRequired); // Bidder's stated price
+          const adjustedUnits = hb.adjustedUnitsToSupply || hb.unitsRequired; // Units bidder must supply
+          const effectivePrice = hb.effectivePricePerUnitForBuyer || pricePerUnit; // Buyer's effective price
+
           return `
             <tr>
               <td style="padding: 8px; border-bottom: 1px solid #eee;">${hb.specificHabitat}</td>
-              <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${hb.unitsRequired}</td>
+              <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${hb.baseUnitsRequired}</td>
+              <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${hb.locationClassification.toUpperCase()}</td>
               <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">£${pricePerUnit.toFixed(2)}</td>
+              <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${adjustedUnits.toFixed(2)}</td>
+              <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">£${effectivePrice.toFixed(2)}</td>
               <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">£${hb.subtotal.toLocaleString()}</td>
             </tr>
           `;
@@ -272,8 +498,11 @@ async function sendBidNotifications(bidData, bidId, action) {
           <thead>
             <tr style="background: #f5f5f5;">
               <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Habitat Type</th>
-              <th style="padding: 10px; text-align: center; border-bottom: 2px solid #ddd;">Units</th>
-              <th style="padding: 10px; text-align: right; border-bottom: 2px solid #ddd;">Price/Unit</th>
+              <th style="padding: 10px; text-align: center; border-bottom: 2px solid #ddd;">Base Units</th>
+              <th style="padding: 10px; text-align: center; border-bottom: 2px solid #ddd;">Location</th>
+              <th style="padding: 10px; text-align: right; border-bottom: 2px solid #ddd;">Bidder Price/Unit</th>
+              <th style="padding: 10px; text-align: right; border-bottom: 2px solid #ddd;">Adj. Units Supply</th>
+              <th style="padding: 10px; text-align: right; border-bottom: 2px solid #ddd;">Buyer Eff. Price/Unit</th>
               <th style="padding: 10px; text-align: right; border-bottom: 2px solid #ddd;">Subtotal</th>
             </tr>
           </thead>
@@ -307,7 +536,7 @@ async function sendBidNotifications(bidData, bidId, action) {
             <p style="margin: 5px 0;"><strong>Name:</strong> ${userData.firstName} ${userData.lastName}</p>
             <p style="margin: 5px 0;"><strong>Company:</strong> ${userData.company || userData.companyName || "Not specified"}</p>
             <p style="margin: 5px 0;"><strong>Email:</strong> ${userData.email}</p>
-            <p style="margin: 5px 0;"><strong>Total Bid:</strong> £${bidData.bidAmount.toLocaleString()}</p>
+            <p style="margin: 5px 0;"><strong>Total Bid:</strong> £${bidDataForEmail.bidAmount.toLocaleString()}</p>
             <p style="margin: 5px 0;"><strong>Bid ID:</strong> ${bidId}</p>
             <p style="margin: 5px 0;"><strong>${actionPastTense}:</strong> ${actionDate.toLocaleString("en-GB")}</p>
           </div>
@@ -323,8 +552,7 @@ async function sendBidNotifications(bidData, bidId, action) {
         </div>
         
         <div style="background: #333; padding: 20px; text-align: center; color: #ccc; font-size: 12px;">
-          <p style="margin: 0;">GIGL Marketplace Admin System</p>
-          <p style="margin: 5px 0 0 0;">Automated bid ${action} notification</p>
+          <p style="margin: 0;">GIGL Marketplace - Biodiversity Net Gain Trading Platform</p>
         </div>
       </div>
     `;
@@ -376,15 +604,6 @@ async function sendWithdrawalNotifications(userData, opportunityData, bidData, b
             <p style="margin: 5px 0;"><strong>Withdrawn Amount:</strong> £${bidData.bidAmount.toLocaleString()}</p>
             <p style="margin: 5px 0;"><strong>Bid ID:</strong> ${bidId}</p>
             <p style="margin: 5px 0;"><strong>Withdrawn:</strong> ${actionDate.toLocaleString("en-GB")}</p>
-          </div>
-          
-          <div style="background: #dbeafe; padding: 15px; border-radius: 8px; border-left: 4px solid #2563eb; margin: 20px 0;">
-            <p style="margin: 0; color: #1e40af; font-size: 14px;">
-              <strong>What happens next:</strong><br>
-              • This opportunity is now available for you to bid on again<br>
-              • You can place a new bid anytime before the closing date<br>
-              • Your withdrawn bid will remain in your bid history for reference
-            </p>
           </div>
           
           <div style="text-align: center; margin: 30px 0;">
@@ -442,8 +661,7 @@ async function sendWithdrawalNotifications(userData, opportunityData, bidData, b
         </div>
         
         <div style="background: #333; padding: 20px; text-align: center; color: #ccc; font-size: 12px;">
-          <p style="margin: 0;">GIGL Marketplace Admin System</p>
-          <p style="margin: 5px 0 0 0;">Automated bid withdrawal notification</p>
+          <p style="margin: 0;">GIGL Marketplace - Biodiversity Net Gain Trading Platform</p>
         </div>
       </div>
     `;
